@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+langchain
+langchain-community
+langchain-groq
+faiss-cpu
+sentence-transformers
+pymupdf
+python-docx
+easyocr
+pillow
+sqlalchemy
+python-multipart
+python-dotenv
+firebase-admin
+pyjwt
+cryptography
