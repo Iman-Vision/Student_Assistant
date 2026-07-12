@@ -1,13 +1,26 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DocSage - Your AI Study Assistant</title>
+    <title>Personal Q&A System</title>
+    <style>
+      html, body, #root { margin: 0; min-height: 100vh; }
+      .boot-screen {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0a0a0a;
+        color: #fff;
+        font-family: system-ui, sans-serif;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-screen">Loading Personal Q&A…</div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

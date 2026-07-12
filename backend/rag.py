@@ -1,17 +1,10 @@
 import os
-import tempfile
-import fitz
+import PyPDF2
 import docx
-import easyocr
-import numpy as np
+import json
 from typing import List, Dict, Any, Optional
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_groq import ChatGroq
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
+from groq import Groq
 
 load_dotenv()
 
@@ -19,24 +12,16 @@ load_dotenv()
 class RAGSystem:
     def __init__(self):
         self.groq_api_key = os.getenv("GROQ_API_KEY")
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        self.vector_stores: Dict[str, FAISS] = {}
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
-        self.llm = ChatGroq(
-            model_name="llama-3.1-70b-versatile",
-            temperature=0.7,
-            groq_api_key=self.groq_api_key
-        )
-        self.reader = easyocr.Reader(['en'], gpu=False)
+        self.client = Groq(api_key=self.groq_api_key) if self.groq_api_key else None
+        self.documents: Dict[str, str] = {}
+        self.reader = None
 
     def extract_text_from_pdf(self, file_path: str) -> str:
-        doc = fitz.open(file_path)
         text = ""
-        for page in doc:
-            text += page.get_text()
+        with open(file_path, 'rb') as f:
+            reader = PyPDF2.PdfReader(f)
+            for page in reader.pages:
+                text += page.extract_text() or ""
         return text
 
     def extract_text_from_docx(self, file_path: str) -> str:
@@ -48,8 +33,15 @@ class RAGSystem:
             return f.read()
 
     def extract_text_from_image(self, file_path: str) -> str:
-        result = self.reader.readtext(file_path)
-        return "\n".join([text for (bbox, text, prob) in result])
+        try:
+            if not self.reader:
+                import easyocr
+                self.reader = easyocr.Reader(['en'], gpu=False)
+            result = self.reader.readtext(file_path)
+            return "\n".join([text for (bbox, text, prob) in result])
+        except Exception as e:
+            print(f"Error processing image: {e}")
+            return ""
 
     def process_file(self, file_path: str, filename: str) -> str:
         ext = filename.lower().split('.')[-1]
@@ -65,106 +57,103 @@ class RAGSystem:
             return ""
 
     def add_document_to_vector_store(self, conversation_id: str, text: str):
-        chunks = self.text_splitter.split_text(text)
-        if conversation_id not in self.vector_stores:
-            self.vector_stores[conversation_id] = FAISS.from_texts(
-                chunks,
-                embedding=self.embeddings
-            )
+        if conversation_id not in self.documents:
+            self.documents[conversation_id] = text
         else:
-            self.vector_stores[conversation_id].add_texts(chunks)
+            self.documents[conversation_id] += "\n" + text
 
-    def get_qa_chain(self, conversation_id: str) -> Optional[RetrievalQA]:
-        if conversation_id not in self.vector_stores:
-            return None
-
-        prompt_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
-
-        {context}
-
-        Question: {question}
-        Helpful Answer:"""
-
-        prompt = PromptTemplate(
-            template=prompt_template,
-            input_variables=["context", "question"]
-        )
-
-        return RetrievalQA.from_chain_type(
-            llm=self.llm,
-            chain_type="stuff",
-            retriever=self.vector_stores[conversation_id].as_retriever(search_kwargs={"k": 4}),
-            chain_type_kwargs={"prompt": prompt}
-        )
+    def _call_groq(self, system_prompt: str, user_prompt: str) -> str:
+        if not self.client:
+            return "GROQ_API_KEY not set. Please configure your API key."
+        
+        try:
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                model="llama3-8b-8192",
+                temperature=0.7
+            )
+            return chat_completion.choices[0].message.content
+        except Exception as e:
+            print(f"Error calling Groq: {e}")
+            return f"Error: {str(e)}"
 
     def chat(self, conversation_id: str, question: str) -> str:
-        qa_chain = self.get_qa_chain(conversation_id)
-        if qa_chain:
-            result = qa_chain.invoke({"query": question})
-            return result["result"]
-        else:
+        if conversation_id not in self.documents:
             return "Please upload some documents first to start asking questions!"
+        
+        context = self.documents[conversation_id]
+        system_prompt = "You are a helpful study assistant. Answer the user's question based only on the provided context. If the answer isn't in the context, say so clearly."
+        user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
+        
+        return self._call_groq(system_prompt, user_prompt)
 
     def generate_flashcards(self, conversation_id: str, topic: Optional[str] = None) -> List[Dict[str, str]]:
-        prompt = """Generate 5 flashcards based on the provided context. Each flashcard should have a 'question' and 'answer' field.
-        Format the output as a JSON array of objects with 'question' and 'answer' keys.
-        Example: [{"question": "What is X?", "answer": "Y"}]
-        """
-        if conversation_id in self.vector_stores:
-            docs = self.vector_stores[conversation_id].similarity_search(topic or "key concepts", k=5)
-            context = "\n".join([doc.page_content for doc in docs])
-            full_prompt = f"{prompt}\n\nContext: {context}"
-        else:
-            full_prompt = f"{prompt}\n\nTopic: {topic if topic else 'general study'}"
-
+        if conversation_id not in self.documents:
+            return []
+        
+        context = self.documents[conversation_id]
+        system_prompt = "You are a study assistant. Generate 5 flashcards from the provided context. Return ONLY a JSON array of objects with 'question' and 'answer' fields, no extra text."
+        user_prompt = f"Context:\n{context}\n\nGenerate flashcards."
+        
+        response = self._call_groq(system_prompt, user_prompt)
         try:
-            response = self.llm.invoke(full_prompt)
-            import json
-            return json.loads(response.content)
-        except Exception:
-            return [
-                {"question": "Sample Question 1?", "answer": "Sample Answer 1"},
-                {"question": "Sample Question 2?", "answer": "Sample Answer 2"}
-            ]
+            return json.loads(response)
+        except:
+            # Fallback if JSON parsing fails
+            return [{"question": "What is the document about?", "answer": "Please see the document content."}]
 
     def generate_quiz(self, conversation_id: str, topic: Optional[str] = None) -> List[Dict[str, Any]]:
-        prompt = """Generate a 5-question multiple-choice quiz based on the provided context. Each question should have:
-        - 'question': The question text
-        - 'options': Array of 4 options (A, B, C, D)
-        - 'correct_answer': The correct option (A, B, C, or D)
-        Format the output as a JSON array.
-        """
-        if conversation_id in self.vector_stores:
-            docs = self.vector_stores[conversation_id].similarity_search(topic or "key concepts", k=5)
-            context = "\n".join([doc.page_content for doc in docs])
-            full_prompt = f"{prompt}\n\nContext: {context}"
-        else:
-            full_prompt = f"{prompt}\n\nTopic: {topic if topic else 'general study'}"
-
+        if conversation_id not in self.documents:
+            return []
+        
+        context = self.documents[conversation_id]
+        system_prompt = "You are a study assistant. Generate a 5-question multiple-choice quiz from the provided context. Return ONLY a JSON array of objects with 'question', 'options' (array of 4 options like ['A) ...', 'B) ...', etc.]), and 'correct_answer' (the letter like 'A') fields, no extra text."
+        user_prompt = f"Context:\n{context}\n\nGenerate quiz."
+        
+        response = self._call_groq(system_prompt, user_prompt)
         try:
-            response = self.llm.invoke(full_prompt)
-            import json
-            return json.loads(response.content)
-        except Exception:
+            return json.loads(response)
+        except:
             return [
                 {
-                    "question": "Sample Quiz Question?",
+                    "question": "Sample question?",
                     "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
                     "correct_answer": "A"
                 }
             ]
 
     def generate_summary(self, conversation_id: str, topic: Optional[str] = None) -> str:
-        prompt = """Generate a comprehensive summary of the provided context. Include key points, main ideas, and important concepts."""
-        if conversation_id in self.vector_stores:
-            docs = self.vector_stores[conversation_id].similarity_search(topic or "summary", k=10)
-            context = "\n".join([doc.page_content for doc in docs])
-            full_prompt = f"{prompt}\n\nContext: {context}"
-        else:
-            full_prompt = f"{prompt}\n\nTopic: {topic if topic else 'general study'}"
+        if conversation_id not in self.documents:
+            return "No document to summarize!"
+        
+        context = self.documents[conversation_id]
+        system_prompt = "You are a study assistant. Generate a comprehensive summary of the provided context."
+        user_prompt = f"Context:\n{context}\n\nGenerate summary."
+        
+        return self._call_groq(system_prompt, user_prompt)
 
-        response = self.llm.invoke(full_prompt)
-        return response.content
+    def generate_key_points(self, conversation_id: str, topic: Optional[str] = None) -> str:
+        if conversation_id not in self.documents:
+            return "No document to extract key points from!"
+        
+        context = self.documents[conversation_id]
+        system_prompt = "You are a study assistant. Extract the key points from the provided context as a bulleted list."
+        user_prompt = f"Context:\n{context}\n\nExtract key points."
+        
+        return self._call_groq(system_prompt, user_prompt)
+
+    def explain_simply(self, conversation_id: str, topic: Optional[str] = None) -> str:
+        if conversation_id not in self.documents:
+            return "No document to explain!"
+        
+        context = self.documents[conversation_id]
+        system_prompt = "You are a study assistant. Explain the content of the provided context in simple, easy-to-understand language for a beginner."
+        user_prompt = f"Context:\n{context}\n\nExplain simply."
+        
+        return self._call_groq(system_prompt, user_prompt)
 
 
 rag_system = RAGSystem()
