@@ -44,7 +44,7 @@ pip install -r requirements.txt
 
 Create `.env` in the repo root (see `.env.example`):
 ```env
-SUPABASE_JWT_SECRET=your_supabase_jwt_secret   # Project Settings -> API -> JWT Secret
+SUPABASE_URL=https://your-project.supabase.co   # Project Settings -> API -> Project URL
 GROQ_API_KEY=your_groq_api_key_here
 FRONTEND_ORIGIN=http://localhost:5173
 ```
@@ -79,7 +79,7 @@ or manually: `uvicorn main:app --reload` from `backend/`, and `npm run dev` from
 2. Authentication → Providers → enable **Google**, add a Google Cloud OAuth client ID/secret (also free).
 3. Authentication → URL Configuration → add your deployed URL (and `http://localhost:5173` for local dev) to Redirect URLs.
 4. Project Settings → API → copy the **Project URL** and **anon public key** into `frontend/.env`.
-5. Project Settings → API → copy the **JWT Secret** into the root `.env` as `SUPABASE_JWT_SECRET`.
+5. Project Settings → API → copy the **Project URL** again into the root `.env` as `SUPABASE_URL` (backend verifies tokens against Supabase's public JWKS endpoint — no shared secret needed). Only set `SUPABASE_JWT_SECRET` instead if your project exposes a legacy HS256 "JWT Secret" and you'd rather use that.
 
 ## Deploying (free, Docker)
 
@@ -97,7 +97,7 @@ The repo ships with a `Dockerfile` that builds the React frontend and bundles it
    app_port: 7860
    ---
    ```
-3. Settings → Repository secrets → add `SUPABASE_JWT_SECRET`, `GROQ_API_KEY`, `FRONTEND_ORIGIN` (set to your Space's public URL, e.g. `https://you-docsage.hf.space`).
+3. Settings → Repository secrets → add `SUPABASE_URL`, `GROQ_API_KEY`, `FRONTEND_ORIGIN` (set to your Space's public URL, e.g. `https://you-docsage.hf.space`).
 4. Add that same Space URL to Supabase's Redirect URLs (step 3 above).
 5. Push — the Space builds the `Dockerfile` and serves the app on port 7860.
 
@@ -110,7 +110,7 @@ Same Dockerfile works unmodified — set the same three env vars, they auto-dete
 ```bash
 docker build -t docsage .
 docker run -p 8000:7860 \
-  -e SUPABASE_JWT_SECRET=your_secret \
+  -e SUPABASE_URL=https://your-project.supabase.co \
   -e GROQ_API_KEY=your_key \
   -e FRONTEND_ORIGIN=http://localhost:8000 \
   docsage
