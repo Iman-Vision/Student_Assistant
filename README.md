@@ -1,3 +1,13 @@
+---
+title: DocSage
+emoji: 📚
+colorFrom: purple
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # DocSage 📚
 
 AI-powered study assistant — upload documents, chat with them, and generate flashcards, quizzes, summaries, key points, and simplified explanations.
@@ -89,18 +99,10 @@ The repo ships with a `Dockerfile` that builds the React frontend and bundles it
 ### Hugging Face Spaces (recommended, free)
 
 1. Create a new Space → SDK: **Docker** → **Space hardware: CPU basic (Free)** — don't change this dropdown, the paid tiers are optional upsells, not required. Push this repo to the Space's git remote (or link the GitHub repo).
-2. Add a Spaces config block to the top of this README (Spaces reads it from README frontmatter) — HF Spaces looks for:
-   ```yaml
-   ---
-   title: DocSage
-   emoji: 📚
-   sdk: docker
-   app_port: 7860
-   ---
-   ```
+2. This README already has the Spaces config block at the very top (`sdk: docker`, `app_port: 7860`) — Spaces reads that frontmatter automatically, nothing to add.
 3. Settings → Repository secrets (not "Variables", secrets stay hidden) → add `SUPABASE_URL`, `GROQ_API_KEY`, `FRONTEND_ORIGIN` (set to your Space's public URL, e.g. `https://you-docsage.hf.space`).
 4. Add that same Space URL to Supabase's Redirect URLs (step 2 in Supabase Setup above).
-5. Push — the Space builds the `Dockerfile` and serves the app on port 7860. No payment method needed for CPU basic.
+5. Push — the Space builds the `Dockerfile` and serves the app on port 7860.
 
 **Free-tier caveat:** Spaces' default disk is ephemeral — the SQLite DB and uploaded files are wiped on every rebuild/restart. Fine for demos; for persistent data either enable a Space's persistent storage (paid) or point `backend/database.py` and the upload path at an external free store (e.g. a small Postgres/Supabase table + Supabase Storage bucket).
 
