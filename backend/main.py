@@ -38,6 +38,17 @@ def require_conversation_owner(conversation_id: str, user_email: str):
         raise HTTPException(status_code=403, detail="Not your conversation")
 
 
+def backfill_missing_file_content():
+    for f in db.files_missing_content():
+        if Path(f["file_path"]).exists():
+            text = rag_system.process_file(f["file_path"], f["filename"])
+            if text:
+                db.update_file_content(f["id"], text)
+
+
+backfill_missing_file_content()
+
+
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
@@ -74,7 +85,6 @@ async def delete_conversation(conv_id: str, current_user: dict = Depends(get_cur
     for file_path in db.file_paths_for_conversation(conv_id):
         Path(file_path).unlink(missing_ok=True)
     db.delete_conversation(current_user["email"], conv_id)
-    rag_system.remove_conversation(conv_id)
     return {"status": "success"}
 
 
@@ -96,9 +106,13 @@ async def chat(req: dict, current_user: dict = Depends(get_current_user)):
     else:
         require_conversation_owner(str(conversation_id), email)
 
-    db.add_message(str(conversation_id), "user", question)
-    response = rag_system.chat(str(conversation_id), question)
-    db.add_message(str(conversation_id), "assistant", response)
+    conversation_id = str(conversation_id)
+    history = db.get_messages(conversation_id)["messages"]
+    context = db.get_document_text(conversation_id)
+
+    db.add_message(conversation_id, "user", question)
+    response = rag_system.chat(context, question, history)
+    db.add_message(conversation_id, "assistant", response)
 
     return {
         "conversation_id": conversation_id,
@@ -134,8 +148,7 @@ async def upload_file(
         raise
 
     text = rag_system.process_file(str(file_location), safe_name)
-    rag_system.add_document_to_vector_store(conversation_id, text)
-    db.add_file(email, conversation_id, safe_name, str(file_location))
+    db.add_file(email, conversation_id, safe_name, str(file_location), text)
 
     return {"filename": safe_name, "status": "processed"}
 
@@ -161,24 +174,25 @@ async def study(req: dict, current_user: dict = Depends(get_current_user)):
     conversation_id = str(req.get("conversation_id"))
     topic = req.get("topic")
     require_conversation_owner(conversation_id, current_user["email"])
+    context = db.get_document_text(conversation_id)
 
     if tool == "flashcards":
-        flashcards = rag_system.generate_flashcards(conversation_id, topic)
+        flashcards = rag_system.generate_flashcards(context, topic)
         return {"content": flashcards, "format": "flashcards"}
     elif tool == "quiz":
-        quiz = rag_system.generate_quiz(conversation_id, topic)
+        quiz = rag_system.generate_quiz(context, topic)
         return {"content": quiz, "format": "quiz"}
     elif tool == "summary":
-        summary = rag_system.generate_summary(conversation_id, topic)
+        summary = rag_system.generate_summary(context, topic)
         return {"content": summary, "format": "summary"}
     elif tool == "key_points":
-        key_points = rag_system.generate_key_points(conversation_id, topic)
+        key_points = rag_system.generate_key_points(context, topic)
         return {"content": key_points, "format": "key_points"}
     elif tool == "explain":
-        explanation = rag_system.explain_simply(conversation_id, topic)
+        explanation = rag_system.explain_simply(context, topic)
         return {"content": explanation, "format": "explain"}
     elif tool == "practice":
-        summary = rag_system.generate_summary(conversation_id, topic)
+        summary = rag_system.generate_summary(context, topic)
         return {"content": summary, "format": "practice"}
     else:
         raise HTTPException(status_code=400, detail="Invalid tool")

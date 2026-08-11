@@ -13,7 +13,6 @@ class RAGSystem:
     def __init__(self):
         self.groq_api_key = os.getenv("GROQ_API_KEY")
         self.client = Groq(api_key=self.groq_api_key) if self.groq_api_key else None
-        self.documents: Dict[str, str] = {}
         self.reader = None
 
     def extract_text_from_pdf(self, file_path: str) -> str:
@@ -56,15 +55,6 @@ class RAGSystem:
         else:
             return ""
 
-    def add_document_to_vector_store(self, conversation_id: str, text: str):
-        if conversation_id not in self.documents:
-            self.documents[conversation_id] = text
-        else:
-            self.documents[conversation_id] += "\n" + text
-
-    def remove_conversation(self, conversation_id: str):
-        self.documents.pop(conversation_id, None)
-
     def _call_groq(self, system_prompt: str, user_prompt: str) -> str:
         if not self.client:
             return "GROQ_API_KEY not set. Please configure your API key."
@@ -83,24 +73,39 @@ class RAGSystem:
             print(f"Error calling Groq: {e}")
             return f"Error: {str(e)}"
 
-    def chat(self, conversation_id: str, question: str) -> str:
-        if conversation_id not in self.documents:
+    def chat(self, context: str, question: str, history: Optional[List[Dict[str, str]]] = None) -> str:
+        if not context:
             return "Please upload some documents first to start asking questions!"
-        
-        context = self.documents[conversation_id]
-        system_prompt = "You are a helpful study assistant. Answer the user's question based only on the provided context. If the answer isn't in the context, say so clearly."
-        user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
-        
-        return self._call_groq(system_prompt, user_prompt)
+        if not self.client:
+            return "GROQ_API_KEY not set. Please configure your API key."
 
-    def generate_flashcards(self, conversation_id: str, topic: Optional[str] = None) -> List[Dict[str, str]]:
-        if conversation_id not in self.documents:
+        system_prompt = (
+            "You are a helpful study assistant. Answer the user's questions based only on the "
+            f"following context. If the answer isn't in the context, say so clearly.\n\nContext:\n{context}"
+        )
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": question})
+
+        try:
+            chat_completion = self.client.chat.completions.create(
+                messages=messages,
+                model="llama-3.1-8b-instant",
+                temperature=0.7
+            )
+            return chat_completion.choices[0].message.content
+        except Exception as e:
+            print(f"Error calling Groq: {e}")
+            return f"Error: {str(e)}"
+
+    def generate_flashcards(self, context: str, topic: Optional[str] = None) -> List[Dict[str, str]]:
+        if not context:
             return []
-        
-        context = self.documents[conversation_id]
+
         system_prompt = "You are a study assistant. Generate 5 flashcards from the provided context. Return ONLY a JSON array of objects with 'question' and 'answer' fields, no extra text."
         user_prompt = f"Context:\n{context}\n\nGenerate flashcards."
-        
+
         response = self._call_groq(system_prompt, user_prompt)
         try:
             return json.loads(response)
@@ -108,14 +113,13 @@ class RAGSystem:
             # Fallback if JSON parsing fails
             return [{"question": "What is the document about?", "answer": "Please see the document content."}]
 
-    def generate_quiz(self, conversation_id: str, topic: Optional[str] = None) -> List[Dict[str, Any]]:
-        if conversation_id not in self.documents:
+    def generate_quiz(self, context: str, topic: Optional[str] = None) -> List[Dict[str, Any]]:
+        if not context:
             return []
-        
-        context = self.documents[conversation_id]
+
         system_prompt = "You are a study assistant. Generate a 5-question multiple-choice quiz from the provided context. Return ONLY a JSON array of objects with 'question', 'options' (array of 4 options like ['A) ...', 'B) ...', etc.]), and 'correct_answer' (the letter like 'A') fields, no extra text."
         user_prompt = f"Context:\n{context}\n\nGenerate quiz."
-        
+
         response = self._call_groq(system_prompt, user_prompt)
         try:
             return json.loads(response)
@@ -128,34 +132,31 @@ class RAGSystem:
                 }
             ]
 
-    def generate_summary(self, conversation_id: str, topic: Optional[str] = None) -> str:
-        if conversation_id not in self.documents:
+    def generate_summary(self, context: str, topic: Optional[str] = None) -> str:
+        if not context:
             return "No document to summarize!"
-        
-        context = self.documents[conversation_id]
+
         system_prompt = "You are a study assistant. Generate a comprehensive summary of the provided context."
         user_prompt = f"Context:\n{context}\n\nGenerate summary."
-        
+
         return self._call_groq(system_prompt, user_prompt)
 
-    def generate_key_points(self, conversation_id: str, topic: Optional[str] = None) -> str:
-        if conversation_id not in self.documents:
+    def generate_key_points(self, context: str, topic: Optional[str] = None) -> str:
+        if not context:
             return "No document to extract key points from!"
-        
-        context = self.documents[conversation_id]
+
         system_prompt = "You are a study assistant. Extract the key points from the provided context as a bulleted list."
         user_prompt = f"Context:\n{context}\n\nExtract key points."
-        
+
         return self._call_groq(system_prompt, user_prompt)
 
-    def explain_simply(self, conversation_id: str, topic: Optional[str] = None) -> str:
-        if conversation_id not in self.documents:
+    def explain_simply(self, context: str, topic: Optional[str] = None) -> str:
+        if not context:
             return "No document to explain!"
-        
-        context = self.documents[conversation_id]
+
         system_prompt = "You are a study assistant. Explain the content of the provided context in simple, easy-to-understand language for a beginner."
         user_prompt = f"Context:\n{context}\n\nExplain simply."
-        
+
         return self._call_groq(system_prompt, user_prompt)
 
 

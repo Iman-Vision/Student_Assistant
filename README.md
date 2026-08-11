@@ -4,25 +4,26 @@ AI-powered study assistant — upload documents, chat with them, and generate fl
 
 ## Features
 
-- 📤 **Document Upload**: PDF, DOCX, TXT, and images (OCR via EasyOCR)
-- 💬 **AI Chat**: Ask questions grounded in your uploaded documents
+- 📤 **Document Upload**: PDF, DOCX, TXT, and images (OCR via EasyOCR) — extracted text persisted in SQLite, survives server restarts
+- 💬 **AI Chat**: Ask questions grounded in your uploaded documents, remembers earlier turns in the same conversation
 - 🃏 **Flashcards**, 📝 **Quizzes**, 📄 **Summaries**, 📋 **Key Points**, 💡 **Simple Explanations**
-- 🔐 **Real auth**: Google sign-in via Supabase — every user's data (conversations, files) is isolated server-side
-- 🗑️ Deleting a conversation/file also removes its uploaded file from disk, not just the DB row
+- 🔐 **Real auth**: Email magic-link sign-in via Supabase — every user's data (conversations, files) is isolated server-side
+- 🗑️ Deleting a conversation/file removes its extracted text and the uploaded file from disk, not just the DB row
+- 🧭 Collapsible chat list and tools sidebar (toggle icons in the header)
 
 ## Tech Stack
 
 ### Backend
 - **FastAPI** — API server, also serves the built frontend as static files
-- **Groq** (`llama3-8b-8192`) — LLM inference for chat and study tools
+- **Groq** (`llama-3.1-8b-instant`) — LLM inference for chat and study tools
 - **PyPDF2 / python-docx / EasyOCR** — text extraction from uploads
-- **SQLite** — conversations, messages, file metadata
-- **PyJWT** — verifies Supabase-issued JWTs
+- **SQLite** — conversations, messages, file metadata + extracted text
+- **PyJWT** — verifies Supabase-issued JWTs against Supabase's public JWKS endpoint (no shared secret needed)
 
 ### Frontend
 - **React 18 + TypeScript + Vite**
 - **Tailwind CSS**, **Lucide React** icons
-- **Supabase JS** — Google sign-in client-side, attaches the session token to every API call
+- **Supabase JS** — email magic-link sign-in client-side, attaches the session token to every API call
 
 This is a single deployable unit: `npm run build` produces `frontend/dist`, and FastAPI mounts it as static files. There is no separate frontend server in production.
 
@@ -31,7 +32,7 @@ This is a single deployable unit: `npm run build` produces `frontend/dist`, and 
 ### Prerequisites
 - Python 3.11+
 - Node.js 20+
-- A free [Supabase](https://supabase.com) project (Auth → Providers → enable Google)
+- A free [Supabase](https://supabase.com) project
 - A free [Groq](https://console.groq.com) API key
 
 ### 1. Backend
@@ -54,7 +55,7 @@ FRONTEND_ORIGIN=http://localhost:5173
 Create `frontend/.env` (see `frontend/.env.example`):
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_or_publishable_key
 ```
 
 ```bash
@@ -73,13 +74,13 @@ or manually: `uvicorn main:app --reload` from `backend/`, and `npm run dev` from
 - Frontend dev server: http://localhost:5173
 - Backend API: http://localhost:8000
 
-## Supabase Setup (Google sign-in)
+## Supabase Setup (email sign-in)
 
 1. Create a project at [supabase.com](https://supabase.com) (free tier).
-2. Authentication → Providers → enable **Google**, add a Google Cloud OAuth client ID/secret (also free).
-3. Authentication → URL Configuration → add your deployed URL (and `http://localhost:5173` for local dev) to Redirect URLs.
-4. Project Settings → API → copy the **Project URL** and **anon public key** into `frontend/.env`.
-5. Project Settings → API → copy the **Project URL** again into the root `.env` as `SUPABASE_URL` (backend verifies tokens against Supabase's public JWKS endpoint — no shared secret needed). Only set `SUPABASE_JWT_SECRET` instead if your project exposes a legacy HS256 "JWT Secret" and you'd rather use that.
+2. Authentication → URL Configuration → set **Site URL** to your app's URL (`http://localhost:5173` for local dev), and add it under **Redirect URLs** too. Add your deployed URL there later as well.
+3. Project Settings → API → copy the **Project URL** and the **anon public** key (may be labeled **publishable key** in newer dashboards) into `frontend/.env`.
+4. Project Settings → API → copy the **Project URL** again into the root `.env` as `SUPABASE_URL` — that's the only backend auth config needed; it verifies tokens via Supabase's public JWKS endpoint, no secret key required.
+5. Sign-in flow: user enters their email in the app → Supabase emails a magic link → clicking it signs them in. No Google/OAuth app setup needed.
 
 ## Deploying (free, Docker)
 
@@ -87,7 +88,7 @@ The repo ships with a `Dockerfile` that builds the React frontend and bundles it
 
 ### Hugging Face Spaces (recommended, free)
 
-1. Create a new Space → SDK: **Docker** → point it at this repo (or push the repo to the Space's git remote).
+1. Create a new Space → SDK: **Docker** → **Space hardware: CPU basic (Free)** — don't change this dropdown, the paid tiers are optional upsells, not required. Push this repo to the Space's git remote (or link the GitHub repo).
 2. Add a Spaces config block to the top of this README (Spaces reads it from README frontmatter) — HF Spaces looks for:
    ```yaml
    ---
@@ -97,9 +98,9 @@ The repo ships with a `Dockerfile` that builds the React frontend and bundles it
    app_port: 7860
    ---
    ```
-3. Settings → Repository secrets → add `SUPABASE_URL`, `GROQ_API_KEY`, `FRONTEND_ORIGIN` (set to your Space's public URL, e.g. `https://you-docsage.hf.space`).
-4. Add that same Space URL to Supabase's Redirect URLs (step 3 above).
-5. Push — the Space builds the `Dockerfile` and serves the app on port 7860.
+3. Settings → Repository secrets (not "Variables", secrets stay hidden) → add `SUPABASE_URL`, `GROQ_API_KEY`, `FRONTEND_ORIGIN` (set to your Space's public URL, e.g. `https://you-docsage.hf.space`).
+4. Add that same Space URL to Supabase's Redirect URLs (step 2 in Supabase Setup above).
+5. Push — the Space builds the `Dockerfile` and serves the app on port 7860. No payment method needed for CPU basic.
 
 **Free-tier caveat:** Spaces' default disk is ephemeral — the SQLite DB and uploaded files are wiped on every rebuild/restart. Fine for demos; for persistent data either enable a Space's persistent storage (paid) or point `backend/database.py` and the upload path at an external free store (e.g. a small Postgres/Supabase table + Supabase Storage bucket).
 

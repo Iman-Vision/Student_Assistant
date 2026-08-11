@@ -55,12 +55,18 @@ class Database:
                 conversation_id INTEGER NOT NULL,
                 filename TEXT NOT NULL,
                 file_path TEXT NOT NULL,
+                content TEXT DEFAULT '',
                 chunks INTEGER DEFAULT 0,
                 uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_email) REFERENCES users(email),
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id)
             )
         """)
+
+        cursor.execute("PRAGMA table_info(files)")
+        existing_columns = {row["name"] for row in cursor.fetchall()}
+        if "content" not in existing_columns:
+            cursor.execute("ALTER TABLE files ADD COLUMN content TEXT DEFAULT ''")
 
         conn.commit()
         conn.close()
@@ -168,16 +174,42 @@ class Database:
         conn.commit()
         conn.close()
 
-    def add_file(self, user_email: str, conversation_id: str, filename: str, file_path: str):
+    def add_file(self, user_email: str, conversation_id: str, filename: str, file_path: str, content: str = ""):
         file_id = str(uuid.uuid4())
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO files (id, user_email, conversation_id, filename, file_path, chunks) VALUES (?, ?, ?, ?, ?, ?)",
-            (file_id, user_email, int(conversation_id), filename, file_path, 1)
+            "INSERT INTO files (id, user_email, conversation_id, filename, file_path, content, chunks) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (file_id, user_email, int(conversation_id), filename, file_path, content, 1)
         )
         conn.commit()
         conn.close()
+
+    def files_missing_content(self) -> List[dict]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, filename, file_path FROM files WHERE content IS NULL OR content = ''")
+        rows = cursor.fetchall()
+        conn.close()
+        return [{"id": row["id"], "filename": row["filename"], "file_path": row["file_path"]} for row in rows]
+
+    def update_file_content(self, file_id: str, content: str):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE files SET content = ? WHERE id = ?", (content, file_id))
+        conn.commit()
+        conn.close()
+
+    def get_document_text(self, conversation_id: str) -> str:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT content FROM files WHERE conversation_id = ? ORDER BY uploaded_at ASC",
+            (int(conversation_id),)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return "\n".join(row["content"] for row in rows if row["content"])
 
     def get_files(self, user_email: str, conversation_id: str) -> dict:
         conn = self.get_connection()
