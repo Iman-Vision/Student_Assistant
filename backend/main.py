@@ -158,9 +158,9 @@ async def delete_file(conv_id: str, filename: str, current_user: dict = Depends(
 @app.post("/api/study")
 async def study(req: dict, current_user: dict = Depends(get_current_user)):
     tool = req.get("tool")
-    conversation_id = req.get("conversation_id")
+    conversation_id = str(req.get("conversation_id"))
     topic = req.get("topic")
-    require_conversation_owner(str(conversation_id), current_user["email"])
+    require_conversation_owner(conversation_id, current_user["email"])
 
     if tool == "flashcards":
         flashcards = rag_system.generate_flashcards(conversation_id, topic)

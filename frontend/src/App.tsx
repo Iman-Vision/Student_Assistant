@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send, Trash2, MessageSquare, BookOpen, FileQuestion, User, Loader2,
-  FileText, Plus, List, PenLine, Lightbulb, Paperclip, UploadCloud, CheckCircle2, AlertCircle, Sparkles, Brain, X, LogOut
+  FileText, Plus, List, PenLine, Lightbulb, Paperclip, UploadCloud, CheckCircle2, AlertCircle, Sparkles, Brain, X, LogOut,
+  PanelLeftClose, PanelLeft, PanelRightClose, PanelRight
 } from 'lucide-react';
 import api from './api';
 import { supabase } from './supabaseClient';
@@ -376,6 +377,8 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [showToolsNav, setShowToolsNav] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -396,9 +399,21 @@ export default function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  const handleSignIn = useCallback(() => {
-    supabase.auth.signInWithOAuth({ provider: 'google' });
-  }, []);
+  const [authEmail, setAuthEmail] = useState('');
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  const handleSendMagicLink = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail.trim()) return;
+    setAuthError('');
+    const { error } = await supabase.auth.signInWithOtp({
+      email: authEmail.trim(),
+      options: { emailRedirectTo: window.location.origin },
+    });
+    if (error) setAuthError(error.message);
+    else setMagicLinkSent(true);
+  }, [authEmail]);
 
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -623,11 +638,25 @@ export default function App() {
             <Brain className="text-white w-6 h-6" />
           </div>
           <h1 className="text-xl font-bold mb-1">Study Assistant</h1>
-          <p className="text-sm text-gray-500 mb-6">Sign in with Google to continue.</p>
-          <button onClick={handleSignIn}
-            className="w-full px-4 py-2.5 rounded-xl bg-white text-black font-semibold text-sm hover:bg-gray-200">
-            Continue with Google
-          </button>
+          {magicLinkSent ? (
+            <p className="text-sm text-gray-300">
+              Check <span className="font-semibold text-white">{authEmail}</span> for a sign-in link.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-gray-500 mb-6">Sign in with your email to continue.</p>
+              <form onSubmit={handleSendMagicLink} className="space-y-3">
+                <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white" />
+                <button type="submit"
+                  className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm">
+                  Send sign-in link
+                </button>
+              </form>
+              {authError && <p className="text-xs text-red-400 mt-3">{authError}</p>}
+            </>
+          )}
         </div>
       </div>
     );
@@ -648,6 +677,7 @@ export default function App() {
     <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden">
       {toast && <ToastBanner toast={toast} onClose={() => setToast(null)} />}
 
+      {showSidebar && (
       <aside className="w-64 border-r border-gray-800 flex flex-col bg-[#141414] shrink-0">
         <div className="p-4 border-b border-gray-800">
           <div className="flex items-center gap-2 mb-4">
@@ -693,13 +723,24 @@ export default function App() {
           ))}
         </div>
       </aside>
+      )}
 
       <main className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
         <header className="border-b border-gray-800 shrink-0 bg-[#141414]">
-          <div className="h-14 flex items-center px-6 justify-between">
-            <div>
-              <h2 className="font-bold text-white">{activeModule.label}</h2>
-              <p className="text-xs text-gray-500">{activeModule.desc}</p>
+          <div className="h-14 flex items-center px-6 justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button onClick={() => setShowSidebar(v => !v)} title={showSidebar ? 'Hide chats' : 'Show chats'}
+                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] shrink-0">
+                {showSidebar ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
+              </button>
+              <button onClick={() => setShowToolsNav(v => !v)} title={showToolsNav ? 'Hide tools' : 'Show tools'}
+                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] shrink-0">
+                {showToolsNav ? <PanelRightClose size={18} /> : <PanelRight size={18} />}
+              </button>
+              <div className="min-w-0">
+                <h2 className="font-bold text-white truncate">{activeModule.label}</h2>
+                <p className="text-xs text-gray-500 truncate">{activeModule.desc}</p>
+              </div>
             </div>
             {isThinking && (
               <div className="flex items-center gap-2 text-gray-400 text-sm">
@@ -719,6 +760,7 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-hidden flex">
+          {showToolsNav && (
           <nav className="w-48 border-r border-gray-800 bg-[#141414] shrink-0 p-2 space-y-1">
             {NAV_ITEMS.map(item => (
               <button key={item.id} onClick={() => switchModule(item.id)}
@@ -731,6 +773,7 @@ export default function App() {
               </button>
             ))}
           </nav>
+          )}
 
           <div className="flex-1 flex flex-col min-w-0">
             {activeView === 'chat' ? (
