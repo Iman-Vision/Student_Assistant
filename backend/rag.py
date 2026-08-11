@@ -62,6 +62,9 @@ class RAGSystem:
         else:
             self.documents[conversation_id] += "\n" + text
 
+    def remove_conversation(self, conversation_id: str):
+        self.documents.pop(conversation_id, None)
+
     def _call_groq(self, system_prompt: str, user_prompt: str) -> str:
         if not self.client:
             return "GROQ_API_KEY not set. Please configure your API key."

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send, Trash2, MessageSquare, BookOpen, FileQuestion, User, Loader2,
-  FileText, Plus, List, PenLine, Lightbulb, Paperclip, UploadCloud, CheckCircle2, AlertCircle, Sparkles, Brain, X
+  FileText, Plus, List, PenLine, Lightbulb, Paperclip, UploadCloud, CheckCircle2, AlertCircle, Sparkles, Brain, X, LogOut
 } from 'lucide-react';
 import api from './api';
+import { supabase } from './supabaseClient';
+import type { Session } from '@supabase/supabase-js';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -359,7 +361,8 @@ function StudyView({ tool, study, hasFiles, isThinking, isDragging, isUploading,
 
 
 export default function App() {
-  const user = { email: "demo@docsage.com", name: "Demo User" };
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -378,6 +381,32 @@ export default function App() {
 
   const hasFiles = files.length > 0;
   const activeModule = NAV_ITEMS.find(t => t.id === activeView)!;
+  const user = session?.user
+    ? { email: session.user.email ?? '', name: session.user.user_metadata?.full_name || session.user.email || 'User' }
+    : null;
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const handleSignIn = useCallback(() => {
+    supabase.auth.signInWithOAuth({ provider: 'google' });
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setConversations([]);
+    setActiveChatId(null);
+    setMessages([]);
+    setFiles([]);
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -393,9 +422,9 @@ export default function App() {
 
   const showToast = useCallback((type: Toast['type'], message: string) => setToast({ type, message }), []);
 
-  const fetchFiles = useCallback(async (email: string, convId: number) => {
+  const fetchFiles = useCallback(async (convId: number) => {
     try {
-      const res = await api.get(`/files/${encodeURIComponent(email)}/${convId}`);
+      const res = await api.get(`/files/${convId}`);
       setFiles(res.data.files || []);
       setTotalChunks(res.data.total_chunks || 0);
     } catch {
@@ -404,55 +433,50 @@ export default function App() {
     }
   }, []);
 
-  const loadConversation = useCallback(async (email: string, convId: number) => {
+  const loadConversation = useCallback(async (convId: number) => {
     try {
-      const res = await api.get(`/conversations/${encodeURIComponent(email)}/${convId}/messages`);
+      const res = await api.get(`/conversations/${convId}/messages`);
       setMessages(res.data.messages || []);
       setActiveChatId(convId);
-      await fetchFiles(email, convId);
+      await fetchFiles(convId);
     } catch {
       showToast('error', 'Could not load chat.');
     }
   }, [fetchFiles, showToast]);
 
-  const refreshConversations = useCallback(async (email: string) => {
-    const res = await api.get(`/conversations/${encodeURIComponent(email)}`);
+  const refreshConversations = useCallback(async () => {
+    const res = await api.get('/conversations');
     setConversations(res.data);
     return res.data as Conversation[];
   }, []);
 
-  // Initialize app on load or when user changes
+  // Initialize app once signed in
   useEffect(() => {
+    if (!session) return;
     const init = async () => {
       setIsInitializing(true);
       try {
         const res = await api.get("/auth/me");
         setConversations(res.data.conversations || []);
         const convs = res.data.conversations;
-        if (convs?.length) await loadConversation(res.data.email, convs[0].id);
+        if (convs?.length) await loadConversation(convs[0].id);
         else {
-          const newRes = await api.post("/conversations", { email: res.data.email, title: "New chat" });
-          await loadConversation(res.data.email, newRes.data.id);
+          const newRes = await api.post("/conversations", { title: "New chat" });
+          await loadConversation(newRes.data.id);
         }
       } catch (error) {
         console.error("Initialization error:", error);
-        try {
-          const newRes = await api.post("/conversations", { email: user.email, title: "New chat" });
-          await loadConversation(user.email, newRes.data.id);
-        } catch {
-          console.error("Failed to initialize app");
-        }
       } finally {
         setIsInitializing(false);
       }
     };
     init();
-  }, []);
+  }, [session]);
 
   const handleNewChat = useCallback(async () => {
     try {
-      const res = await api.post('/conversations', { email: user.email, title: 'New chat' });
-      await refreshConversations(user.email);
+      const res = await api.post('/conversations', { title: 'New chat' });
+      await refreshConversations();
       setActiveChatId(res.data.id);
       setMessages([]);
       setFiles([]);
@@ -462,22 +486,22 @@ export default function App() {
     } catch {
       showToast('error', 'Could not create new chat.');
     }
-  }, [user, refreshConversations, showToast]);
+  }, [refreshConversations, showToast]);
 
   const handleDeleteChat = useCallback(async (convId: number) => {
     try {
-      await api.delete(`/conversations/${encodeURIComponent(user.email)}/${convId}`);
-      const convs = await refreshConversations(user.email);
+      await api.delete(`/conversations/${convId}`);
+      const convs = await refreshConversations();
       if (convs.length === 0) {
-        const res = await api.post('/conversations', { email: user.email });
-        await loadConversation(user.email, res.data.id);
+        const res = await api.post('/conversations', { title: 'New chat' });
+        await loadConversation(res.data.id);
       } else if (activeChatId === convId) {
-        await loadConversation(user.email, convs[0].id);
+        await loadConversation(convs[0].id);
       }
     } catch {
       showToast('error', 'Could not delete chat.');
     }
-  }, [user, refreshConversations, loadConversation, activeChatId, showToast]);
+  }, [refreshConversations, loadConversation, activeChatId, showToast]);
 
   const uploadFiles = useCallback(async (fileList: FileList | File[]) => {
     if (!activeChatId) return;
@@ -496,21 +520,18 @@ export default function App() {
       const formData = new FormData();
       formData.append('file', file);
       try {
-        await api.post(
-          `/upload?email=${encodeURIComponent(user.email)}&conversation_id=${activeChatId}`,
-          formData,
-        );
+        await api.post(`/upload?conversation_id=${activeChatId}`, formData);
         added++;
       } catch (err: any) {
         const msg = err.response?.data?.detail || `Failed: ${file.name}`;
         showToast('error', msg);
       }
     }
-    await fetchFiles(user.email, activeChatId);
+    await fetchFiles(activeChatId);
     setIsUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (added > 0) showToast('success', `${added} file(s) added successfully.`);
-  }, [user, activeChatId, fetchFiles, showToast]);
+  }, [activeChatId, fetchFiles, showToast]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) uploadFiles(e.target.files);
@@ -525,15 +546,13 @@ export default function App() {
   const removeFile = useCallback(async (filename: string) => {
     if (!activeChatId) return;
     try {
-      await api.delete(
-        `/files/${encodeURIComponent(user.email)}/${activeChatId}/${encodeURIComponent(filename)}`,
-      );
-      await fetchFiles(user.email, activeChatId);
+      await api.delete(`/files/${activeChatId}/${encodeURIComponent(filename)}`);
+      await fetchFiles(activeChatId);
       showToast('success', `Removed "${filename}"`);
     } catch {
       showToast('error', 'Could not remove file.');
     }
-  }, [user, activeChatId, fetchFiles, showToast]);
+  }, [activeChatId, fetchFiles, showToast]);
 
   const handleSend = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -549,15 +568,15 @@ export default function App() {
     setStudyContent(null);
 
     try {
-      const res = await api.post('/chat', { email: user.email, conversation_id: activeChatId, question });
+      const res = await api.post('/chat', { conversation_id: activeChatId, question });
       setMessages(prev => [...prev, { role: 'assistant', content: res.data.answer }]);
-      await refreshConversations(user.email);
+      await refreshConversations();
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.' }]);
     } finally {
       setIsThinking(false);
     }
-  }, [input, user, activeChatId, isThinking, hasFiles, showToast, refreshConversations]);
+  }, [input, activeChatId, isThinking, hasFiles, showToast, refreshConversations]);
 
   const switchModule = useCallback(async (view: ActiveView) => {
     setActiveView(view);
@@ -577,7 +596,6 @@ export default function App() {
     setIsThinking(true);
     try {
       const res = await api.post('/study', {
-        email: user.email,
         conversation_id: activeChatId,
         tool,
       });
@@ -587,7 +605,33 @@ export default function App() {
     } finally {
       setIsThinking(false);
     }
-  }, [user, activeChatId, hasFiles, studyContent, showToast]);
+  }, [activeChatId, hasFiles, studyContent, showToast]);
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen bg-[#0a0a0a] text-white font-sans items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (!session || !user) {
+    return (
+      <div className="flex h-screen bg-[#0a0a0a] text-white font-sans items-center justify-center">
+        <div className="text-center max-w-sm px-6">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 flex items-center justify-center mx-auto mb-4">
+            <Brain className="text-white w-6 h-6" />
+          </div>
+          <h1 className="text-xl font-bold mb-1">Study Assistant</h1>
+          <p className="text-sm text-gray-500 mb-6">Sign in with Google to continue.</p>
+          <button onClick={handleSignIn}
+            className="w-full px-4 py-2.5 rounded-xl bg-white text-black font-semibold text-sm hover:bg-gray-200">
+            Continue with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isInitializing) {
     return (
@@ -616,10 +660,14 @@ export default function App() {
             <div className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-gray-700 flex items-center justify-center shrink-0">
               <User className="w-4 h-4 text-gray-400" />
             </div>
-            <div className="overflow-hidden min-w-0">
+            <div className="overflow-hidden min-w-0 flex-1">
               <p className="font-bold truncate text-sm">{user.name}</p>
               <p className="text-xs text-gray-500 truncate">{user.email}</p>
             </div>
+            <button onClick={handleSignOut} title="Sign out"
+              className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] shrink-0">
+              <LogOut size={16} />
+            </button>
           </div>
           <button onClick={handleNewChat}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-700 text-sm font-semibold hover:bg-[#1a1a1a]">
@@ -633,7 +681,7 @@ export default function App() {
               'group flex items-center gap-1 rounded-lg',
               activeChatId === conv.id ? 'bg-gradient-to-r from-purple-600/20 to-indigo-600/20 border border-purple-500/30' : 'hover:bg-[#1a1a1a]'
             )}>
-              <button onClick={() => loadConversation(user.email, conv.id)}
+              <button onClick={() => loadConversation(conv.id)}
                 className="flex-1 text-left px-3 py-2 text-sm truncate min-w-0 text-gray-300 hover:text-white">
                 {conv.title}
               </button>

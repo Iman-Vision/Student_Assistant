@@ -2,7 +2,6 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from models import Conversation, Message
 
 
 class Database:
@@ -115,11 +114,30 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
+            "DELETE FROM messages WHERE conversation_id = ?",
+            (int(conversation_id),)
+        )
+        cursor.execute(
+            "DELETE FROM files WHERE conversation_id = ? AND user_email = ?",
+            (int(conversation_id), user_email)
+        )
+        cursor.execute(
             "DELETE FROM conversations WHERE id = ? AND user_email = ?",
             (int(conversation_id), user_email)
         )
         conn.commit()
         conn.close()
+
+    def conversation_owner(self, conversation_id: str) -> Optional[str]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT user_email FROM conversations WHERE id = ?",
+            (int(conversation_id),)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return row["user_email"] if row else None
 
     def get_messages(self, conversation_id: str) -> dict:
         conn = self.get_connection()
@@ -182,15 +200,32 @@ class Database:
             total_chunks += row["chunks"]
         return {"files": files, "total_chunks": total_chunks}
 
-    def delete_file(self, user_email: str, conversation_id: str, filename: str):
+    def delete_file(self, user_email: str, conversation_id: str, filename: str) -> Optional[str]:
         conn = self.get_connection()
         cursor = conn.cursor()
+        cursor.execute(
+            "SELECT file_path FROM files WHERE user_email = ? AND conversation_id = ? AND filename = ?",
+            (user_email, int(conversation_id), filename)
+        )
+        row = cursor.fetchone()
         cursor.execute(
             "DELETE FROM files WHERE user_email = ? AND conversation_id = ? AND filename = ?",
             (user_email, int(conversation_id), filename)
         )
         conn.commit()
         conn.close()
+        return row["file_path"] if row else None
+
+    def file_paths_for_conversation(self, conversation_id: str) -> List[str]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT file_path FROM files WHERE conversation_id = ?",
+            (int(conversation_id),)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return [row["file_path"] for row in rows]
 
 
 db = Database()
