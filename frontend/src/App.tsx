@@ -742,11 +742,25 @@ export default function App() {
                 <p className="text-xs text-gray-500 truncate">{activeModule.desc}</p>
               </div>
             </div>
-            {isThinking && (
-              <div className="flex items-center gap-2 text-gray-400 text-sm">
-                <Loader2 className="animate-spin" /> Working…
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {isThinking && (
+                <div className="flex items-center gap-2 text-gray-400 text-sm">
+                  <Loader2 className="animate-spin" /> Working…
+                </div>
+              )}
+              {activeChatId && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  title="Upload documents"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold shrink-0 disabled:opacity-40 hover:opacity-90 transition-opacity"
+                >
+                  {isUploading ? <Loader2 size={13} className="animate-spin" /> : <UploadCloud size={13} />}
+                  Upload
+                </button>
+              )}
+            </div>
           </div>
           {hasFiles && (
             <DocumentsBar
@@ -833,8 +847,17 @@ export default function App() {
 
                 <div className="p-4 border-t border-gray-800 shrink-0 bg-[#141414]">
                   <form onSubmit={handleSend} className="relative flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading || !activeChatId}
+                      title="Upload a document"
+                      className="p-3 rounded-xl bg-[#1a1a1a] border border-gray-700 text-gray-400 hover:text-purple-400 hover:border-purple-500/50 transition-colors disabled:opacity-40 shrink-0"
+                    >
+                      {isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
+                    </button>
                     <input type="text" value={input} onChange={e => setInput(e.target.value)}
-                      placeholder={hasFiles ? 'Ask about your documents…' : 'Upload documents first'}
+                      placeholder={hasFiles ? 'Ask about your documents…' : 'Upload a document to start chatting…'}
                       disabled={!hasFiles || !activeChatId}
                       className="flex-1 bg-[#1a1a1a] border border-gray-700 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-50" />
                     <button type="submit" disabled={!input.trim() || isThinking || !hasFiles || !activeChatId}
