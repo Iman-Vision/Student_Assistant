@@ -65,7 +65,7 @@ class RAGSystem:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                model="qwen/qwen3.8-27b",
+                model="llama-3.3-70b-versatile",
                 temperature=0.7
             )
             return chat_completion.choices[0].message.content
@@ -91,7 +91,7 @@ class RAGSystem:
         try:
             chat_completion = self.client.chat.completions.create(
                 messages=messages,
-                model="qwen/qwen3.8-27b",
+                model="llama-3.3-70b-versatile",
                 temperature=0.7
             )
             return chat_completion.choices[0].message.content
