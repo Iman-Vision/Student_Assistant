@@ -88,6 +88,18 @@ async def delete_conversation(conv_id: str, current_user: dict = Depends(get_cur
     return {"status": "success"}
 
 
+@app.patch("/api/conversations/{conv_id}")
+async def rename_conversation(conv_id: str, data: dict, current_user: dict = Depends(get_current_user)):
+    require_conversation_owner(conv_id, current_user["email"])
+    title = (data.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title cannot be empty")
+    # Hard limit: 40 characters max
+    title = title[:40]
+    db.update_conversation_title(conv_id, current_user["email"], title)
+    return {"status": "success", "title": title}
+
+
 @app.get("/api/conversations/{conv_id}/messages")
 async def get_messages(conv_id: str, current_user: dict = Depends(get_current_user)):
     require_conversation_owner(conv_id, current_user["email"])
@@ -114,9 +126,22 @@ async def chat(req: dict, current_user: dict = Depends(get_current_user)):
     response = rag_system.chat(context, question, history)
     db.add_message(conversation_id, "assistant", response)
 
+    # Auto-title: only on the very first Q+A, when title is still the default
+    current_conv = next(
+        (c for c in db.get_conversations(email) if str(c["id"]) == conversation_id),
+        None
+    )
+    if current_conv and current_conv["title"] in ("New chat", "New Conversation"):
+        # Build a concise title from the question (max 40 chars)
+        raw = question.strip().rstrip("?").strip()
+        auto_title = (raw[:37] + "…") if len(raw) > 40 else raw
+        if auto_title:
+            db.update_conversation_title(conversation_id, email, auto_title)
+
     return {
         "conversation_id": conversation_id,
-        "answer": response
+        "answer": response,
+        "title_updated": current_conv["title"] in ("New chat", "New Conversation") if current_conv else False
     }
 
 

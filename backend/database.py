@@ -1,4 +1,4 @@
-﻿import sqlite3
+import sqlite3
 import uuid
 from datetime import datetime
 from typing import List, Optional
@@ -115,6 +115,16 @@ class Database:
         conn.close()
 
         return {"id": conv_id, "title": title, "created_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}
+
+    def update_conversation_title(self, conversation_id: str, user_email: str, title: str):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_email = ?",
+            (title, int(conversation_id), user_email)
+        )
+        conn.commit()
+        conn.close()
 
     def delete_conversation(self, user_email: str, conversation_id: str):
         conn = self.get_connection()

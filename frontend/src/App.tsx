@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send, Trash2, MessageSquare, BookOpen, FileQuestion, User, Loader2,
   FileText, Plus, List, PenLine, Lightbulb, Paperclip, UploadCloud, CheckCircle2, AlertCircle, Sparkles, Brain, X, LogOut,
-  PanelLeftClose, PanelLeft, PanelRightClose, PanelRight
+  PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Pencil, Check
 } from 'lucide-react';
 import api from './api';
 import { supabase } from './supabaseClient';
@@ -379,8 +379,11 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showToolsNav, setShowToolsNav] = useState(true);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const hasFiles = files.length > 0;
   const activeModule = NAV_ITEMS.find(t => t.id === activeView)!;
@@ -498,10 +501,30 @@ export default function App() {
       setTotalChunks(0);
       setStudyContent(null);
       setActiveView('chat');
+      setRenamingId(null);
     } catch {
       showToast('error', 'Could not create new chat.');
     }
   }, [refreshConversations, showToast]);
+
+  const handleRename = useCallback(async (convId: number) => {
+    const trimmed = renameValue.trim().slice(0, 40);
+    if (!trimmed) { setRenamingId(null); return; }
+    try {
+      await api.patch(`/conversations/${convId}`, { title: trimmed });
+      setConversations(prev => prev.map(c => c.id === convId ? { ...c, title: trimmed } : c));
+    } catch {
+      showToast('error', 'Could not rename chat.');
+    } finally {
+      setRenamingId(null);
+    }
+  }, [renameValue, showToast]);
+
+  const startRename = useCallback((conv: Conversation) => {
+    setRenamingId(conv.id);
+    setRenameValue(conv.title);
+    setTimeout(() => renameInputRef.current?.select(), 30);
+  }, []);
 
   const handleDeleteChat = useCallback(async (convId: number) => {
     try {
@@ -585,6 +608,7 @@ export default function App() {
     try {
       const res = await api.post('/chat', { conversation_id: activeChatId, question });
       setMessages(prev => [...prev, { role: 'assistant', content: res.data.answer }]);
+      // Always refresh so auto-title from backend shows in sidebar
       await refreshConversations();
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.' }]);
@@ -711,14 +735,49 @@ export default function App() {
               'group flex items-center gap-1 rounded-lg',
               activeChatId === conv.id ? 'bg-gradient-to-r from-purple-600/20 to-indigo-600/20 border border-purple-500/30' : 'hover:bg-[#1a1a1a]'
             )}>
-              <button onClick={() => loadConversation(conv.id)}
-                className="flex-1 text-left px-3 py-2 text-sm truncate min-w-0 text-gray-300 hover:text-white">
-                {conv.title}
-              </button>
-              <button onClick={() => handleDeleteChat(conv.id)}
-                className="p-2 opacity-0 group-hover:opacity-60 hover:!opacity-100 shrink-0 text-gray-400 hover:text-red-400">
-                <Trash2 size={14} />
-              </button>
+              {renamingId === conv.id ? (
+                <form
+                  className="flex-1 flex items-center gap-1 px-2 py-1"
+                  onSubmit={e => { e.preventDefault(); handleRename(conv.id); }}
+                >
+                  <input
+                    ref={renameInputRef}
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value.slice(0, 40))}
+                    onKeyDown={e => { if (e.key === 'Escape') setRenamingId(null); }}
+                    onBlur={() => handleRename(conv.id)}
+                    maxLength={40}
+                    className="flex-1 bg-[#0a0a0a] border border-purple-500/50 rounded-md px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-purple-500/60 min-w-0"
+                    autoFocus
+                  />
+                  <button type="submit" className="p-1 text-green-400 hover:text-green-300 shrink-0">
+                    <Check size={13} />
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <button onClick={() => loadConversation(conv.id)}
+                    className="flex-1 text-left px-3 py-2 text-sm truncate min-w-0 text-gray-300 hover:text-white">
+                    {conv.title}
+                  </button>
+                  <div className="flex items-center gap-0.5 pr-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <button
+                      onClick={e => { e.stopPropagation(); startRename(conv); }}
+                      title="Rename"
+                      className="p-1.5 rounded-md text-gray-500 hover:text-purple-400 hover:bg-purple-500/10 transition-colors"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteChat(conv.id)}
+                      title="Delete"
+                      className="p-1.5 rounded-md text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>
