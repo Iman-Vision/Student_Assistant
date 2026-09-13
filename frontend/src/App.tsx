@@ -729,13 +729,31 @@ export default function App() {
         <header className="border-b border-gray-800 shrink-0 bg-[#141414]">
           <div className="h-14 flex items-center px-6 justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setShowSidebar(v => !v)} title={showSidebar ? 'Hide chats' : 'Show chats'}
-                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] shrink-0">
-                {showSidebar ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
+              <button
+                onClick={() => setShowSidebar(v => !v)}
+                title={showSidebar ? 'Hide chats' : 'Show chats'}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium shrink-0 transition-all duration-150 border',
+                  showSidebar
+                    ? 'bg-purple-600/15 border-purple-500/40 text-purple-300 hover:bg-purple-600/25 hover:border-purple-400/60'
+                    : 'bg-[#1c1c1c] border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 hover:bg-[#222]'
+                )}
+              >
+                {showSidebar ? <PanelLeftClose size={15} /> : <PanelLeft size={15} />}
+                <span className="hidden sm:inline">{showSidebar ? 'Chats' : 'Chats'}</span>
               </button>
-              <button onClick={() => setShowToolsNav(v => !v)} title={showToolsNav ? 'Hide tools' : 'Show tools'}
-                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] shrink-0">
-                {showToolsNav ? <PanelRightClose size={18} /> : <PanelRight size={18} />}
+              <button
+                onClick={() => setShowToolsNav(v => !v)}
+                title={showToolsNav ? 'Hide tools' : 'Show tools'}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium shrink-0 transition-all duration-150 border',
+                  showToolsNav
+                    ? 'bg-purple-600/15 border-purple-500/40 text-purple-300 hover:bg-purple-600/25 hover:border-purple-400/60'
+                    : 'bg-[#1c1c1c] border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 hover:bg-[#222]'
+                )}
+              >
+                {showToolsNav ? <PanelRightClose size={15} /> : <PanelRight size={15} />}
+                <span className="hidden sm:inline">{showToolsNav ? 'Tools' : 'Tools'}</span>
               </button>
               <div className="min-w-0">
                 <h2 className="font-bold text-white truncate">{activeModule.label}</h2>
