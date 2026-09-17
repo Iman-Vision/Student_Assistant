@@ -163,7 +163,11 @@ class RAGSystem:
 
         system_prompt = (
             "You are a helpful study assistant. Answer the user's questions based only on the "
-            f"following context. If the answer isn't in the context, say so clearly.\n\nContext:\n{context}"
+            "following context. If the answer isn't in the context, say so clearly.\n\n"
+            "Formatting Guidelines:\n"
+            "- When comparing items, listing structured data, or summarizing specs/metrics, format them using clean Markdown tables with header rows.\n"
+            "- When asked to draw or display a chart, graph, workflow, or diagram, use Mermaid code blocks (```mermaid ... ```) such as pie charts, xychart-beta (bar/line charts), flowchart, or sequenceDiagram, or clean Markdown tables.\n\n"
+            f"Context:\n{context}"
         )
         messages = [{"role": "system", "content": system_prompt}]
         if history:

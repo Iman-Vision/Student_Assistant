@@ -9,6 +9,7 @@ import { supabase } from './supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -39,30 +40,7 @@ type StudyToolId = typeof NAV_ITEMS[number]['id'];
 type ActiveView = typeof NAV_ITEMS[number]['id'];
 
 function FormattedMessage({ content }: { content: string }) {
-  const lines = content.split('\n');
-  return (
-    <div className="space-y-2 leading-relaxed">
-      {lines.map((line, i) => {
-        const trimmed = line.trim();
-        if (!trimmed) return <div key={i} className="h-2" />;
-        const html = trimmed
-          .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>')
-          .replace(/^\* (.+)$/, '• $1')
-          .replace(/^\d+\.\s+/, (m) => m);
-        if (trimmed.startsWith('### ')) return <h4 key={i} className="font-bold text-base mt-3">{trimmed.slice(4)}</h4>;
-        if (trimmed.startsWith('## ')) return <h3 key={i} className="font-bold text-lg mt-3">{trimmed.slice(3)}</h3>;
-        if (trimmed.startsWith('# ')) return <h2 key={i} className="font-bold text-xl mt-3">{trimmed.slice(2)}</h2>;
-        if (trimmed.startsWith('---')) return <hr key={i} className="border-gray-700 my-2" />;
-        return (
-          <p
-            key={i}
-            className="opacity-95"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        );
-      })}
-    </div>
-  );
+  return <MarkdownRenderer content={content} />;
 }
 
 function ToastBanner({ toast, onClose }: { toast: Toast; onClose: () => void }) {
