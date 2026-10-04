@@ -12,3 +12,4 @@ pyjwt
 faiss-cpu
 sentence-transformers
 numpy
+ruff

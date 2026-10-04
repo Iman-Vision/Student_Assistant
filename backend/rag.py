@@ -1,11 +1,12 @@
+import json
 import os
 import pickle
-import PyPDF2
-import docx
-import json
-import numpy as np
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+import docx
+import numpy as np
+import PyPDF2
 from dotenv import load_dotenv
 from groq import Groq
 
@@ -202,9 +203,9 @@ class RAGSystem:
 
         candidates = [
             env_model,
+            "llama-3.3-70b-versatile",
             "groq/compound-mini",
             "qwen/qwen3.8-27b",
-            "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
             "groq/compound",
             "openai/gpt-oss-120b",

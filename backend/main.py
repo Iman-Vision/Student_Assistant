@@ -1,15 +1,14 @@
 import os
-import shutil
 import uuid
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query
+
+from auth import get_current_user
+from database import db
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-
 from models import GradeRequest
-from database import db
 from rag import rag_system
-from auth import get_current_user
 
 app = FastAPI(title="DocSage API")
 
