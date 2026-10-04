@@ -9,3 +9,6 @@ python-dotenv
 email-validator
 groq
 pyjwt
+faiss-cpu
+sentence-transformers
+numpy

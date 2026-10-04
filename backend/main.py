@@ -123,7 +123,7 @@ async def chat(req: dict, current_user: dict = Depends(get_current_user)):
     context = db.get_document_text(conversation_id)
 
     db.add_message(conversation_id, "user", question)
-    response = rag_system.chat(context, question, history)
+    response = rag_system.chat(context, question, history, conversation_id=conversation_id)
     db.add_message(conversation_id, "assistant", response)
 
     # Auto-title: only on the very first Q+A, when title is still the default
@@ -175,6 +175,9 @@ async def upload_file(
     text = rag_system.process_file(str(file_location), safe_name)
     db.add_file(email, conversation_id, safe_name, str(file_location), text)
 
+    # Build FAISS vector index for this document
+    rag_system.index_document(text, conversation_id, safe_name)
+
     return {"filename": safe_name, "status": "processed"}
 
 
@@ -190,6 +193,8 @@ async def delete_file(conv_id: str, filename: str, current_user: dict = Depends(
     file_path = db.delete_file(current_user["email"], conv_id, filename)
     if file_path:
         Path(file_path).unlink(missing_ok=True)
+    # Remove chunks for this file from the FAISS index
+    rag_system.remove_document(conv_id, filename)
     return {"status": "success"}
 
 
