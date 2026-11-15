@@ -122,7 +122,11 @@ async def chat(req: dict, current_user: dict = Depends(get_current_user)):
     context = db.get_document_text(conversation_id)
 
     db.add_message(conversation_id, "user", question)
-    response = rag_system.chat(context, question, history, conversation_id=conversation_id)
+    try:
+        response = rag_system.chat(context, question, history, conversation_id=conversation_id)
+    except Exception as e:
+        print(f"RAG chat error: {e}")
+        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
     db.add_message(conversation_id, "assistant", response)
 
     # Auto-title: only on the very first Q+A, when title is still the default
@@ -130,17 +134,19 @@ async def chat(req: dict, current_user: dict = Depends(get_current_user)):
         (c for c in db.get_conversations(email) if str(c["id"]) == conversation_id),
         None
     )
+    title_updated = False
     if current_conv and current_conv["title"] in ("New chat", "New Conversation"):
         # Build a concise title from the question (max 40 chars)
         raw = question.strip().rstrip("?").strip()
         auto_title = (raw[:37] + "…") if len(raw) > 40 else raw
         if auto_title:
             db.update_conversation_title(conversation_id, email, auto_title)
+            title_updated = True
 
     return {
         "conversation_id": conversation_id,
         "answer": response,
-        "title_updated": current_conv["title"] in ("New chat", "New Conversation") if current_conv else False
+        "title_updated": title_updated
     }
 
 

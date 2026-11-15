@@ -204,12 +204,11 @@ class RAGSystem:
         candidates = [
             env_model,
             "llama-3.3-70b-versatile",
-            "groq/compound-mini",
-            "qwen/qwen3.8-27b",
+            "llama-3.1-70b-versatile",
             "llama-3.1-8b-instant",
-            "groq/compound",
-            "openai/gpt-oss-120b",
-            "openai/gpt-oss-20b",
+            "llama3-70b-8192",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
         ]
         candidates = [c for c in candidates if c]
 
@@ -228,7 +227,7 @@ class RAGSystem:
         except Exception as e:
             print(f"Warning: Could not fetch models from Groq API: {e}")
 
-        self._active_model = env_model or "groq/compound-mini"
+        self._active_model = env_model or "llama-3.3-70b-versatile"
         return self._active_model
 
     def _call_completion(self, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:

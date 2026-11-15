@@ -376,6 +376,8 @@ export default function App() {
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
+      // Ensure loading is cleared even when the session arrives via magic link redirect
+      setAuthLoading(false);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -383,18 +385,21 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState('');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [isSendingLink, setIsSendingLink] = useState(false);
 
   const handleSendMagicLink = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authEmail.trim()) return;
+    if (!authEmail.trim() || isSendingLink) return;
     setAuthError('');
+    setIsSendingLink(true);
     const { error } = await supabase.auth.signInWithOtp({
       email: authEmail.trim(),
       options: { emailRedirectTo: window.location.origin },
     });
+    setIsSendingLink(false);
     if (error) setAuthError(error.message);
     else setMagicLinkSent(true);
-  }, [authEmail]);
+  }, [authEmail, isSendingLink]);
 
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -635,25 +640,47 @@ export default function App() {
   if (!session || !user) {
     return (
       <div className="flex h-screen bg-[#0a0a0a] text-white font-sans items-center justify-center">
-        <div className="text-center max-w-sm px-6">
+        <div className="text-center max-w-sm w-full px-6">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 flex items-center justify-center mx-auto mb-4">
             <Brain className="text-white w-6 h-6" />
           </div>
           <h1 className="text-xl font-bold mb-1">Study Assistant</h1>
           {magicLinkSent ? (
-            <p className="text-sm text-gray-300">
-              Check <span className="font-semibold text-white">{authEmail}</span> for a sign-in link.
-            </p>
+            <div className="mt-4 p-4 rounded-xl border border-green-500/30 bg-green-500/10">
+              <CheckCircle2 className="mx-auto w-8 h-8 text-green-400 mb-2" />
+              <p className="text-sm text-gray-300 font-medium">
+                Check your inbox at
+              </p>
+              <p className="text-sm font-bold text-white mt-0.5">{authEmail}</p>
+              <p className="text-xs text-gray-500 mt-2">Click the link in the email to sign in. You can close this tab.</p>
+              <button
+                onClick={() => { setMagicLinkSent(false); setAuthEmail(''); }}
+                className="mt-3 text-xs text-purple-400 hover:text-purple-300 underline"
+              >
+                Use a different email
+              </button>
+            </div>
           ) : (
             <>
-              <p className="text-sm text-gray-500 mb-6">Sign in with your email to continue.</p>
+              <p className="text-sm text-gray-500 mb-6 mt-1">Sign in with your email to continue.</p>
               <form onSubmit={handleSendMagicLink} className="space-y-3">
-                <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                <input
+                  type="email" required value={authEmail}
+                  onChange={e => setAuthEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white" />
-                <button type="submit"
-                  className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm">
-                  Send sign-in link
+                  disabled={isSendingLink}
+                  className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={isSendingLink || !authEmail.trim()}
+                  className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {isSendingLink ? (
+                    <><Loader2 size={16} className="animate-spin" /> Sending…</>
+                  ) : (
+                    'Send sign-in link'
+                  )}
                 </button>
               </form>
               {authError && <p className="text-xs text-red-400 mt-3">{authError}</p>}
@@ -901,18 +928,33 @@ export default function App() {
                 </div>
 
                 <div className="p-4 border-t border-gray-800 shrink-0 bg-[#141414]">
+                  {!hasFiles && activeChatId && (
+                    <div className="mb-3 flex items-center gap-2 p-3 rounded-xl border border-dashed border-purple-500/40 bg-purple-500/5">
+                      <UploadCloud size={15} className="text-purple-400 shrink-0" />
+                      <p className="text-xs text-gray-400 flex-1">Upload a document to start chatting</p>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-semibold shrink-0 disabled:opacity-40"
+                      >
+                        {isUploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+                        {isUploading ? 'Uploading…' : 'Add file'}
+                      </button>
+                    </div>
+                  )}
                   <form onSubmit={handleSend} className="relative flex gap-2">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploading || !activeChatId}
-                      title="Upload a document"
+                      title="Attach a document"
                       className="p-3 rounded-xl bg-[#1a1a1a] border border-gray-700 text-gray-400 hover:text-purple-400 hover:border-purple-500/50 transition-colors disabled:opacity-40 shrink-0"
                     >
                       {isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
                     </button>
                     <input type="text" value={input} onChange={e => setInput(e.target.value)}
-                      placeholder={hasFiles ? 'Ask about your documents…' : 'Upload a document to start chatting…'}
+                      placeholder={hasFiles ? 'Ask about your documents…' : 'Add a document above to start chatting…'}
                       disabled={!hasFiles || !activeChatId}
                       className="flex-1 bg-[#1a1a1a] border border-gray-700 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-50" />
                     <button type="submit" disabled={!input.trim() || isThinking || !hasFiles || !activeChatId}
