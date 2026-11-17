@@ -359,6 +359,18 @@ export default function App() {
   const [showToolsNav, setShowToolsNav] = useState(true);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  // Password reset landing — detected when Supabase sends user back with a recovery token
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState('');
+  // Change password modal (inside the app)
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [cpNew, setCpNew] = useState('');
+  const [cpConfirm, setCpConfirm] = useState('');
+  const [cpSaving, setCpSaving] = useState(false);
+  const [cpMsg, setCpMsg] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -376,6 +388,10 @@ export default function App() {
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
+      // Detect recovery (password-reset) flow from the email link
+      if (_event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true);
+      }
       // Ensure loading is cleared even when the session arrives via magic link redirect
       setAuthLoading(false);
     });
@@ -452,6 +468,30 @@ export default function App() {
     setMessages([]);
     setFiles([]);
   }, []);
+
+  // Set new password from recovery email link
+  const handleSetNewPassword = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== newPasswordConfirm) { setPasswordMsg('Passwords do not match.'); return; }
+    if (newPassword.length < 6) { setPasswordMsg('Password must be at least 6 characters.'); return; }
+    setPasswordSaving(true); setPasswordMsg('');
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordSaving(false);
+    if (error) setPasswordMsg(error.message);
+    else { setPasswordMsg('Password updated! You are now signed in.'); setIsRecoveryMode(false); setNewPassword(''); setNewPasswordConfirm(''); }
+  }, [newPassword, newPasswordConfirm]);
+
+  // Change password from inside the app
+  const handleChangePassword = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cpNew !== cpConfirm) { setCpMsg('New passwords do not match.'); return; }
+    if (cpNew.length < 6) { setCpMsg('Password must be at least 6 characters.'); return; }
+    setCpSaving(true); setCpMsg('');
+    const { error } = await supabase.auth.updateUser({ password: cpNew });
+    setCpSaving(false);
+    if (error) setCpMsg(error.message);
+    else { setCpMsg('Password changed successfully!'); setCpNew(''); setCpConfirm(''); setTimeout(() => { setShowChangePassword(false); setCpMsg(''); }, 2000); }
+  }, [cpNew, cpConfirm]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -681,6 +721,49 @@ export default function App() {
     );
   }
 
+  // Recovery mode: user clicked reset link from email
+  if (isRecoveryMode) {
+    return (
+      <div className="flex h-screen bg-[#0a0a0a] text-white font-sans items-center justify-center">
+        <div className="text-center max-w-sm w-full px-6">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 flex items-center justify-center mx-auto mb-4">
+            <Brain className="text-white w-6 h-6" />
+          </div>
+          <h1 className="text-xl font-bold mb-1">Set New Password</h1>
+          <p className="text-sm text-gray-500 mb-6 mt-1">Choose a new password for your account.</p>
+          <form onSubmit={handleSetNewPassword} className="space-y-3 text-left">
+            <input
+              type="password" required minLength={6} value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              placeholder="New password (min. 6 characters)"
+              disabled={passwordSaving}
+              className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+            />
+            <input
+              type="password" required minLength={6} value={newPasswordConfirm}
+              onChange={e => setNewPasswordConfirm(e.target.value)}
+              placeholder="Confirm new password"
+              disabled={passwordSaving}
+              className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={passwordSaving || !newPassword || !newPasswordConfirm}
+              className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {passwordSaving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Save New Password'}
+            </button>
+            {passwordMsg && (
+              <p className={`text-xs mt-2 ${passwordMsg.includes('updated') ? 'text-green-400' : 'text-red-400'}`}>
+                {passwordMsg}
+              </p>
+            )}
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   if (!session || !user) {
     return (
       <div className="flex h-screen bg-[#0a0a0a] text-white font-sans items-center justify-center">
@@ -875,6 +958,45 @@ export default function App() {
     <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden">
       {toast && <ToastBanner toast={toast} onClose={() => setToast(null)} />}
 
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#141414] border border-gray-700 rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl">
+            <h2 className="text-base font-bold mb-1">Change Password</h2>
+            <p className="text-xs text-gray-500 mb-4">Set a new password for your account.</p>
+            <form onSubmit={handleChangePassword} className="space-y-3">
+              <input
+                type="password" required minLength={6} value={cpNew}
+                onChange={e => setCpNew(e.target.value)}
+                placeholder="New password (min. 6 characters)"
+                disabled={cpSaving}
+                className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+              />
+              <input
+                type="password" required minLength={6} value={cpConfirm}
+                onChange={e => setCpConfirm(e.target.value)}
+                placeholder="Confirm new password"
+                disabled={cpSaving}
+                className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+              />
+              {cpMsg && (
+                <p className={`text-xs ${cpMsg.includes('success') ? 'text-green-400' : 'text-red-400'}`}>{cpMsg}</p>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => { setShowChangePassword(false); setCpNew(''); setCpConfirm(''); setCpMsg(''); }}
+                  className="flex-1 px-4 py-2 rounded-xl border border-gray-700 text-sm text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
+                  Cancel
+                </button>
+                <button type="submit" disabled={cpSaving || !cpNew || !cpConfirm}
+                  className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2">
+                  {cpSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showSidebar && (
       <aside className="w-64 border-r border-gray-800 flex flex-col bg-[#141414] shrink-0">
         <div className="p-4 border-b border-gray-800">
@@ -884,7 +1006,7 @@ export default function App() {
             </div>
             <span className="font-bold text-sm tracking-tight">Study Assistant</span>
           </div>
-          <div className="flex items-center gap-2 overflow-hidden min-w-0 mb-4">
+          <div className="flex items-center gap-2 overflow-hidden min-w-0 mb-2">
             <div className="w-9 h-9 rounded-full bg-[#1a1a1a] border border-gray-700 flex items-center justify-center shrink-0">
               <User className="w-4 h-4 text-gray-400" />
             </div>
@@ -897,6 +1019,13 @@ export default function App() {
               <LogOut size={16} />
             </button>
           </div>
+          <button
+            onClick={() => { setShowChangePassword(true); setCpMsg(''); }}
+            className="w-full text-left text-xs text-gray-500 hover:text-purple-400 px-1 py-1 mb-3 flex items-center gap-1.5 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Change Password
+          </button>
           <button onClick={handleNewChat}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-700 text-sm font-semibold hover:bg-[#1a1a1a]">
             <Plus size={16} />
