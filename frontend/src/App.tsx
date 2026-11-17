@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Send, Trash2, MessageSquare, BookOpen, FileQuestion, User, Loader2,
   FileText, Plus, List, PenLine, Lightbulb, Paperclip, UploadCloud, CheckCircle2, AlertCircle, Sparkles, Brain, X, LogOut,
-  PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Pencil, Check
+  PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Pencil, Check, Settings, KeyRound
 } from 'lucide-react';
 import api from './api';
 import { supabase } from './supabaseClient';
@@ -37,7 +37,7 @@ const NAV_ITEMS = [
 ] as const;
 
 type StudyToolId = typeof NAV_ITEMS[number]['id'];
-type ActiveView = typeof NAV_ITEMS[number]['id'];
+type ActiveView = StudyToolId | 'settings';
 
 function FormattedMessage({ content }: { content: string }) {
   return <MarkdownRenderer content={content} />;
@@ -339,6 +339,246 @@ function StudyView({ tool, study, hasFiles, isThinking, isDragging, isUploading,
 
 
 
+function SettingsView({
+  user,
+  showToast,
+  onSignOut,
+}: {
+  user: { email: string; name: string };
+  showToast: (type: Toast['type'], message: string) => void;
+  onSignOut: () => void;
+}) {
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [requireOldPassword, setRequireOldPassword] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatusMsg(null);
+    if (newPassword.length < 6) {
+      setStatusMsg({ type: 'error', text: 'New password must be at least 6 characters.' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setStatusMsg({ type: 'error', text: 'New passwords do not match.' });
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      if (requireOldPassword && oldPassword.trim()) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: user.email,
+          password: oldPassword,
+        });
+        if (signInErr) {
+          setIsUpdating(false);
+          setStatusMsg({
+            type: 'error',
+            text: 'Current (old) password is incorrect. If you do not remember it, uncheck "Verify current password" or send a reset link to your email below.',
+          });
+          return;
+        }
+      }
+
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateErr) {
+        setStatusMsg({ type: 'error', text: updateErr.message });
+      } else {
+        setStatusMsg({ type: 'success', text: 'Password changed successfully!' });
+        showToast('success', 'Your password has been updated.');
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err?.message || 'Failed to update password.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSendResetLink = async () => {
+    setIsSendingReset(true);
+    setStatusMsg(null);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+        redirectTo: window.location.origin,
+      });
+      if (error) {
+        setStatusMsg({ type: 'error', text: error.message });
+      } else {
+        setStatusMsg({
+          type: 'success',
+          text: `Password reset link sent to ${user.email}! Please check your email inbox.`,
+        });
+        showToast('info', 'Reset link sent to your email.');
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err?.message || 'Failed to send reset link.' });
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-6 md:p-10 max-w-3xl mx-auto w-full">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+          <Settings className="text-purple-400" size={28} />
+          Account Settings
+        </h1>
+        <p className="text-sm text-gray-400 mt-1">
+          Manage your account password and security preferences.
+        </p>
+      </div>
+
+      {/* Account Info Card */}
+      <div className="bg-[#141414] border border-gray-800 rounded-2xl p-6 mb-6">
+        <h2 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+          <User className="text-purple-400" size={18} />
+          Account Profile
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Display Name</span>
+            <p className="text-white font-medium bg-[#1a1a1a] px-3.5 py-2.5 rounded-xl border border-gray-800">{user.name}</p>
+          </div>
+          <div>
+            <span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Email Address</span>
+            <p className="text-white font-medium bg-[#1a1a1a] px-3.5 py-2.5 rounded-xl border border-gray-800 truncate">{user.email}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Password Management Card */}
+      <div className="bg-[#141414] border border-gray-800 rounded-2xl p-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-white flex items-center gap-2">
+              <KeyRound className="text-purple-400" size={18} />
+              Password & Security
+            </h2>
+            <p className="text-xs text-gray-400 mt-1">
+              Change your password by typing your current password, or set a new one directly.
+            </p>
+          </div>
+        </div>
+
+        {statusMsg && (
+          <div
+            className={cn(
+              "p-4 rounded-xl mb-5 text-sm flex items-start gap-2.5",
+              statusMsg.type === "success"
+                ? "bg-green-500/10 border border-green-500/30 text-green-400"
+                : "bg-red-500/10 border border-red-500/30 text-red-400"
+            )}
+          >
+            {statusMsg.type === "success" ? <CheckCircle2 size={18} className="shrink-0 mt-0.5" /> : <AlertCircle size={18} className="shrink-0 mt-0.5" />}
+            <span>{statusMsg.text}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleUpdate} className="space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="checkbox"
+              id="requireOld"
+              checked={requireOldPassword}
+              onChange={(e) => setRequireOldPassword(e.target.checked)}
+              className="rounded border-gray-700 text-purple-600 focus:ring-purple-500 bg-[#1a1a1a]"
+            />
+            <label htmlFor="requireOld" className="text-xs text-gray-400 cursor-pointer select-none">
+              Verify current (old) password before replacing
+            </label>
+          </div>
+
+          {requireOldPassword && (
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5 font-medium">Current (Old) Password</label>
+              <input
+                type="password"
+                required={requireOldPassword}
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
+                placeholder="Enter your current password"
+                disabled={isUpdating}
+                className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5 font-medium">New Password</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min. 6 characters"
+                disabled={isUpdating}
+                className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5 font-medium">Confirm New Password</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-type new password"
+                disabled={isUpdating}
+                className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-4">
+            <button
+              type="submit"
+              disabled={isUpdating || !newPassword || !confirmPassword || (requireOldPassword && !oldPassword)}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-50 flex items-center gap-2 hover:opacity-95 transition-opacity"
+            >
+              {isUpdating ? <><Loader2 size={16} className="animate-spin" /> Updating…</> : 'Update Password'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSendResetLink}
+              disabled={isSendingReset}
+              className="text-xs text-purple-400 hover:text-purple-300 underline flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {isSendingReset ? <><Loader2 size={12} className="animate-spin" /> Sending link…</> : "Don't know old password? Email reset link"}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="mt-8 pt-6 border-t border-gray-800/80 flex justify-end">
+        <button
+          onClick={onSignOut}
+          className="text-xs text-red-400 hover:text-red-300 px-4 py-2 rounded-xl border border-red-500/20 hover:bg-red-500/10 transition-colors flex items-center gap-2"
+        >
+          <LogOut size={14} />
+          Sign Out of Account
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -365,36 +605,58 @@ export default function App() {
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState('');
-  // Change password modal (inside the app)
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [cpNew, setCpNew] = useState('');
-  const [cpConfirm, setCpConfirm] = useState('');
-  const [cpSaving, setCpSaving] = useState(false);
-  const [cpMsg, setCpMsg] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const hasFiles = files.length > 0;
-  const activeModule = NAV_ITEMS.find(t => t.id === activeView)!;
+  const activeModule = NAV_ITEMS.find(t => t.id === activeView) || {
+    id: 'settings' as const,
+    label: 'Settings',
+    icon: Settings,
+    desc: 'Account security and password preferences',
+  };
   const user = session?.user
     ? { email: session.user.email ?? '', name: session.user.user_metadata?.full_name || session.user.email || 'User' }
     : null;
 
   useEffect(() => {
+    // Check URL immediately for recovery token or reset intent
+    const checkRecovery = () => {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      const href = window.location.href || '';
+      if (
+        hash.includes('type=recovery') ||
+        search.includes('type=recovery') ||
+        href.includes('type=recovery') ||
+        href.includes('reset-password')
+      ) {
+        setIsRecoveryMode(true);
+      }
+    };
+    checkRecovery();
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setAuthLoading(false);
+      checkRecovery();
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
-      // Detect recovery (password-reset) flow from the email link
-      if (_event === 'PASSWORD_RECOVERY') {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      if (
+        event === 'PASSWORD_RECOVERY' ||
+        hash.includes('type=recovery') ||
+        search.includes('type=recovery')
+      ) {
         setIsRecoveryMode(true);
       }
-      // Ensure loading is cleared even when the session arrives via magic link redirect
       setAuthLoading(false);
     });
+
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -440,11 +702,11 @@ export default function App() {
     setAuthError(''); setAuthSuccess('');
     setIsSendingLink(true);
     const { error } = await supabase.auth.resetPasswordForEmail(authEmail.trim(), {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: window.location.origin,
     });
     setIsSendingLink(false);
     if (error) setAuthError(error.message);
-    else setAuthSuccess('Password reset link sent! Check your inbox.');
+    else setAuthSuccess('Password reset link sent! Check your email inbox.');
   }, [authEmail, isSendingLink]);
 
   const handleSendMagicLink = useCallback(async (e: React.FormEvent) => {
@@ -469,29 +731,38 @@ export default function App() {
     setFiles([]);
   }, []);
 
+  const showToast = useCallback((type: Toast['type'], message: string) => setToast({ type, message }), []);
+
   // Set new password from recovery email link
   const handleSetNewPassword = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword !== newPasswordConfirm) { setPasswordMsg('Passwords do not match.'); return; }
-    if (newPassword.length < 6) { setPasswordMsg('Password must be at least 6 characters.'); return; }
-    setPasswordSaving(true); setPasswordMsg('');
+    if (newPassword !== newPasswordConfirm) {
+      setPasswordMsg('Passwords do not match.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordMsg('Password must be at least 6 characters.');
+      return;
+    }
+    setPasswordSaving(true);
+    setPasswordMsg('');
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setPasswordSaving(false);
-    if (error) setPasswordMsg(error.message);
-    else { setPasswordMsg('Password updated! You are now signed in.'); setIsRecoveryMode(false); setNewPassword(''); setNewPasswordConfirm(''); }
-  }, [newPassword, newPasswordConfirm]);
-
-  // Change password from inside the app
-  const handleChangePassword = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (cpNew !== cpConfirm) { setCpMsg('New passwords do not match.'); return; }
-    if (cpNew.length < 6) { setCpMsg('Password must be at least 6 characters.'); return; }
-    setCpSaving(true); setCpMsg('');
-    const { error } = await supabase.auth.updateUser({ password: cpNew });
-    setCpSaving(false);
-    if (error) setCpMsg(error.message);
-    else { setCpMsg('Password changed successfully!'); setCpNew(''); setCpConfirm(''); setTimeout(() => { setShowChangePassword(false); setCpMsg(''); }, 2000); }
-  }, [cpNew, cpConfirm]);
+    if (error) {
+      setPasswordMsg(error.message);
+    } else {
+      setPasswordMsg('Password updated successfully! Welcome back.');
+      setTimeout(() => {
+        setIsRecoveryMode(false);
+        setNewPassword('');
+        setNewPasswordConfirm('');
+        if (window.history.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+        showToast('success', 'Your new password has been set!');
+      }, 1200);
+    }
+  }, [newPassword, newPasswordConfirm, showToast]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -504,8 +775,6 @@ export default function App() {
     const timer = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(timer);
   }, [toast]);
-
-  const showToast = useCallback((type: Toast['type'], message: string) => setToast({ type, message }), []);
 
   const fetchFiles = useCallback(async (convId: number) => {
     try {
@@ -686,7 +955,7 @@ export default function App() {
 
   const switchModule = useCallback(async (view: ActiveView) => {
     setActiveView(view);
-    if (view !== 'chat') {
+    if (view !== 'chat' && view !== 'settings') {
       setStudyContent(null);
     }
   }, []);
@@ -958,45 +1227,6 @@ export default function App() {
     <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden">
       {toast && <ToastBanner toast={toast} onClose={() => setToast(null)} />}
 
-      {/* Change Password Modal */}
-      {showChangePassword && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#141414] border border-gray-700 rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl">
-            <h2 className="text-base font-bold mb-1">Change Password</h2>
-            <p className="text-xs text-gray-500 mb-4">Set a new password for your account.</p>
-            <form onSubmit={handleChangePassword} className="space-y-3">
-              <input
-                type="password" required minLength={6} value={cpNew}
-                onChange={e => setCpNew(e.target.value)}
-                placeholder="New password (min. 6 characters)"
-                disabled={cpSaving}
-                className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
-              />
-              <input
-                type="password" required minLength={6} value={cpConfirm}
-                onChange={e => setCpConfirm(e.target.value)}
-                placeholder="Confirm new password"
-                disabled={cpSaving}
-                className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
-              />
-              {cpMsg && (
-                <p className={`text-xs ${cpMsg.includes('success') ? 'text-green-400' : 'text-red-400'}`}>{cpMsg}</p>
-              )}
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => { setShowChangePassword(false); setCpNew(''); setCpConfirm(''); setCpMsg(''); }}
-                  className="flex-1 px-4 py-2 rounded-xl border border-gray-700 text-sm text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
-                  Cancel
-                </button>
-                <button type="submit" disabled={cpSaving || !cpNew || !cpConfirm}
-                  className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2">
-                  {cpSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {showSidebar && (
       <aside className="w-64 border-r border-gray-800 flex flex-col bg-[#141414] shrink-0">
         <div className="p-4 border-b border-gray-800">
@@ -1014,17 +1244,32 @@ export default function App() {
               <p className="font-bold truncate text-sm">{user.name}</p>
               <p className="text-xs text-gray-500 truncate">{user.email}</p>
             </div>
+            <button
+              onClick={() => switchModule('settings')}
+              title="Account Settings"
+              className={cn(
+                "p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] shrink-0 transition-colors",
+                activeView === 'settings' && "text-purple-400 bg-purple-500/10 border border-purple-500/30"
+              )}
+            >
+              <Settings size={16} />
+            </button>
             <button onClick={handleSignOut} title="Sign out"
               className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] shrink-0">
               <LogOut size={16} />
             </button>
           </div>
           <button
-            onClick={() => { setShowChangePassword(true); setCpMsg(''); }}
-            className="w-full text-left text-xs text-gray-500 hover:text-purple-400 px-1 py-1 mb-3 flex items-center gap-1.5 transition-colors"
+            onClick={() => switchModule('settings')}
+            className={cn(
+              "w-full text-left text-xs px-2.5 py-1.5 rounded-lg mb-3 flex items-center gap-2 transition-all",
+              activeView === 'settings'
+                ? "bg-purple-600/20 text-purple-300 border border-purple-500/30 font-semibold"
+                : "text-gray-400 hover:text-white hover:bg-[#1a1a1a] border border-transparent"
+            )}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            Change Password
+            <Settings size={13} />
+            <span>Account Settings</span>
           </button>
           <button onClick={handleNewChat}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-700 text-sm font-semibold hover:bg-[#1a1a1a]">
@@ -1122,13 +1367,27 @@ export default function App() {
                 <p className="text-xs text-gray-500 truncate">{activeModule.desc}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => switchModule('settings')}
+                title="Account Settings"
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all",
+                  activeView === 'settings'
+                    ? "border-purple-500 text-purple-300 bg-purple-500/15"
+                    : "border-gray-700 text-gray-300 hover:text-white hover:bg-[#1a1a1a]"
+                )}
+              >
+                <Settings size={13} />
+                <span>Settings</span>
+              </button>
               {isThinking && (
                 <div className="flex items-center gap-2 text-gray-400 text-sm">
                   <Loader2 className="animate-spin" /> Working…
                 </div>
               )}
-              {activeChatId && (
+              {activeChatId && activeView !== 'settings' && (
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -1142,7 +1401,7 @@ export default function App() {
               )}
             </div>
           </div>
-          {hasFiles && (
+          {hasFiles && activeView !== 'settings' && (
             <DocumentsBar
               files={files}
               totalChunks={totalChunks}
@@ -1155,17 +1414,31 @@ export default function App() {
 
         <div className="flex-1 overflow-hidden flex">
           {showToolsNav && (
-          <nav className="w-48 border-r border-gray-800 bg-[#141414] shrink-0 p-2 space-y-1">
-            {NAV_ITEMS.map(item => (
-              <button key={item.id} onClick={() => switchModule(item.id)}
+          <nav className="w-48 border-r border-gray-800 bg-[#141414] shrink-0 p-2 flex flex-col justify-between">
+            <div className="space-y-1">
+              {NAV_ITEMS.map(item => (
+                <button key={item.id} onClick={() => switchModule(item.id)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
+                    activeView === item.id ? 'bg-gradient-to-r from-purple-600/20 to-indigo-600/20 border border-purple-500/30 text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1a1a]'
+                  )}>
+                  <item.icon size={18} />
+                  <span className="font-medium">{item.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="pt-2 border-t border-gray-800">
+              <button
+                onClick={() => switchModule('settings')}
                 className={cn(
                   'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                  activeView === item.id ? 'bg-gradient-to-r from-purple-600/20 to-indigo-600/20 border border-purple-500/30 text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1a1a]'
-                )}>
-                <item.icon size={18} />
-                <span className="font-medium">{item.label}</span>
+                  activeView === 'settings' ? 'bg-gradient-to-r from-purple-600/20 to-indigo-600/20 border border-purple-500/30 text-white' : 'text-gray-400 hover:text-white hover:bg-[#1a1a1a]'
+                )}
+              >
+                <Settings size={18} />
+                <span className="font-medium">Settings</span>
               </button>
-            ))}
+            </div>
           </nav>
           )}
 
@@ -1262,9 +1535,15 @@ export default function App() {
                   </form>
                 </div>
               </>
+            ) : activeView === 'settings' ? (
+              <SettingsView
+                user={user!}
+                showToast={showToast}
+                onSignOut={handleSignOut}
+              />
             ) : (
               <StudyView
-                tool={activeModule}
+                tool={activeModule as typeof NAV_ITEMS[number]}
                 study={studyContent}
                 hasFiles={hasFiles}
                 isThinking={isThinking}
