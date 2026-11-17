@@ -383,14 +383,45 @@ export default function App() {
   }, []);
 
   const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'magic'>('signin');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
   const [isSendingLink, setIsSendingLink] = useState(false);
+
+  const handleSignInPassword = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail.trim() || !authPassword.trim() || isSendingLink) return;
+    setAuthError(''); setAuthSuccess('');
+    setIsSendingLink(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail.trim(),
+      password: authPassword,
+    });
+    setIsSendingLink(false);
+    if (error) setAuthError(error.message);
+  }, [authEmail, authPassword, isSendingLink]);
+
+  const handleSignUpPassword = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail.trim() || !authPassword.trim() || isSendingLink) return;
+    setAuthError(''); setAuthSuccess('');
+    setIsSendingLink(true);
+    const { error } = await supabase.auth.signUp({
+      email: authEmail.trim(),
+      password: authPassword,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setIsSendingLink(false);
+    if (error) setAuthError(error.message);
+    else setAuthSuccess('Account created! Check your inbox to confirm your email.');
+  }, [authEmail, authPassword, isSendingLink]);
 
   const handleSendMagicLink = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authEmail.trim() || isSendingLink) return;
-    setAuthError('');
+    setAuthError(''); setAuthSuccess('');
     setIsSendingLink(true);
     const { error } = await supabase.auth.signInWithOtp({
       email: authEmail.trim(),
@@ -641,20 +672,20 @@ export default function App() {
     return (
       <div className="flex h-screen bg-[#0a0a0a] text-white font-sans items-center justify-center">
         <div className="text-center max-w-sm w-full px-6">
+          {/* Logo */}
           <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 flex items-center justify-center mx-auto mb-4">
             <Brain className="text-white w-6 h-6" />
           </div>
           <h1 className="text-xl font-bold mb-1">Study Assistant</h1>
+
           {magicLinkSent ? (
             <div className="mt-4 p-4 rounded-xl border border-green-500/30 bg-green-500/10">
               <CheckCircle2 className="mx-auto w-8 h-8 text-green-400 mb-2" />
-              <p className="text-sm text-gray-300 font-medium">
-                Check your inbox at
-              </p>
+              <p className="text-sm text-gray-300 font-medium">Check your inbox at</p>
               <p className="text-sm font-bold text-white mt-0.5">{authEmail}</p>
               <p className="text-xs text-gray-500 mt-2">Click the link in the email to sign in. You can close this tab.</p>
               <button
-                onClick={() => { setMagicLinkSent(false); setAuthEmail(''); }}
+                onClick={() => { setMagicLinkSent(false); setAuthEmail(''); setAuthError(''); }}
                 className="mt-3 text-xs text-purple-400 hover:text-purple-300 underline"
               >
                 Use a different email
@@ -662,27 +693,117 @@ export default function App() {
             </div>
           ) : (
             <>
-              <p className="text-sm text-gray-500 mb-6 mt-1">Sign in with your email to continue.</p>
-              <form onSubmit={handleSendMagicLink} className="space-y-3">
-                <input
-                  type="email" required value={authEmail}
-                  onChange={e => setAuthEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  disabled={isSendingLink}
-                  className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
-                />
-                <button
-                  type="submit"
-                  disabled={isSendingLink || !authEmail.trim()}
-                  className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {isSendingLink ? (
-                    <><Loader2 size={16} className="animate-spin" /> Sending…</>
-                  ) : (
-                    'Send sign-in link'
+              {/* Tab switcher */}
+              <div className="flex mt-4 mb-5 rounded-xl bg-[#1a1a1a] p-1 gap-1">
+                {(['signin', 'signup', 'magic'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => { setAuthMode(mode); setAuthError(''); setAuthSuccess(''); }}
+                    className={`flex-1 text-xs py-2 rounded-lg font-medium transition-all ${
+                      authMode === mode
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Magic Link'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sign In */}
+              {authMode === 'signin' && (
+                <form onSubmit={handleSignInPassword} className="space-y-3">
+                  <p className="text-xs text-gray-500 mb-3">Sign in with your email and password.</p>
+                  <input
+                    type="email" required value={authEmail}
+                    onChange={e => setAuthEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    disabled={isSendingLink}
+                    className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+                  />
+                  <input
+                    type="password" required value={authPassword}
+                    onChange={e => setAuthPassword(e.target.value)}
+                    placeholder="Password"
+                    disabled={isSendingLink}
+                    className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSendingLink || !authEmail.trim() || !authPassword.trim()}
+                    className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {isSendingLink ? <><Loader2 size={16} className="animate-spin" /> Signing in…</> : 'Sign In'}
+                  </button>
+                  <p className="text-xs text-gray-500">
+                    No account?{' '}
+                    <button type="button" onClick={() => setAuthMode('signup')} className="text-purple-400 hover:text-purple-300 underline">
+                      Create one
+                    </button>
+                  </p>
+                </form>
+              )}
+
+              {/* Create Account */}
+              {authMode === 'signup' && (
+                <form onSubmit={handleSignUpPassword} className="space-y-3">
+                  <p className="text-xs text-gray-500 mb-3">Create a new account with email and password.</p>
+                  <input
+                    type="email" required value={authEmail}
+                    onChange={e => setAuthEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    disabled={isSendingLink}
+                    className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+                  />
+                  <input
+                    type="password" required minLength={6} value={authPassword}
+                    onChange={e => setAuthPassword(e.target.value)}
+                    placeholder="Password (min. 6 characters)"
+                    disabled={isSendingLink}
+                    className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSendingLink || !authEmail.trim() || authPassword.length < 6}
+                    className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {isSendingLink ? <><Loader2 size={16} className="animate-spin" /> Creating…</> : 'Create Account'}
+                  </button>
+                  {authSuccess && (
+                    <div className="p-3 rounded-xl border border-green-500/30 bg-green-500/10">
+                      <p className="text-xs text-green-400">{authSuccess}</p>
+                    </div>
                   )}
-                </button>
-              </form>
+                  <p className="text-xs text-gray-500">
+                    Already have an account?{' '}
+                    <button type="button" onClick={() => setAuthMode('signin')} className="text-purple-400 hover:text-purple-300 underline">
+                      Sign in
+                    </button>
+                  </p>
+                </form>
+              )}
+
+              {/* Magic Link */}
+              {authMode === 'magic' && (
+                <form onSubmit={handleSendMagicLink} className="space-y-3">
+                  <p className="text-xs text-gray-500 mb-3">We'll email you a one-click sign-in link — no password needed.</p>
+                  <input
+                    type="email" required value={authEmail}
+                    onChange={e => setAuthEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    disabled={isSendingLink}
+                    className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSendingLink || !authEmail.trim()}
+                    className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {isSendingLink ? <><Loader2 size={16} className="animate-spin" /> Sending…</> : 'Send sign-in link'}
+                  </button>
+                </form>
+              )}
+
               {authError && <p className="text-xs text-red-400 mt-3">{authError}</p>}
             </>
           )}
