@@ -1363,21 +1363,7 @@ export default function App() {
                 <p className="text-xs text-gray-500 truncate">{activeModule.desc}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => switchModule('settings')}
-                title="Account Settings"
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all",
-                  activeView === 'settings'
-                    ? "border-purple-500 text-purple-300 bg-purple-500/15"
-                    : "border-gray-700 text-gray-300 hover:text-white hover:bg-[#1a1a1a]"
-                )}
-              >
-                <Settings size={13} />
-                <span>Settings</span>
-              </button>
+            <div className="flex items-center gap-3">
               {isThinking && (
                 <div className="flex items-center gap-2 text-gray-400 text-sm">
                   <Loader2 className="animate-spin" /> Working…
