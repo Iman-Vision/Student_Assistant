@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: student-assistant
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    dockerContext: .
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: FRONTEND_ORIGIN
+        value: "*"

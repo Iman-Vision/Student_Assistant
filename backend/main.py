@@ -6,17 +6,21 @@ from auth import get_current_user
 from database import db
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from models import GradeRequest
 from rag import rag_system
 
 app = FastAPI(title="DocSage API")
 
-FRONTEND_ORIGINS = [o.strip() for o in os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").split(",") if o.strip()]
+raw_origins = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+FRONTEND_ORIGINS = [o.strip() for o in raw_origins.split(",") if o.strip()]
+has_wildcard = "*" in FRONTEND_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=FRONTEND_ORIGINS,
+    allow_origins=[] if has_wildcard else FRONTEND_ORIGINS,
+    allow_origin_regex=r".*" if has_wildcard else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -238,7 +242,25 @@ async def grade_answer(req: GradeRequest, current_user: dict = Depends(get_curre
     correct = req.user_answer.strip().lower() == req.correct_answer.strip().lower()
     return {"correct": correct}
 
+
+@app.get("/env.js")
+async def get_env_js():
+    supabase_url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL", "")
+    supabase_anon_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
+    content = f'window.__ENV__ = {{ VITE_SUPABASE_URL: "{supabase_url}", VITE_SUPABASE_ANON_KEY: "{supabase_anon_key}" }};'
+    return Response(content=content, media_type="application/javascript")
+
+
 # Mount static frontend files LAST
 frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 if frontend_dist.exists():
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
+
+
+@app.exception_handler(404)
+async def custom_404_handler(request, exc):
+    index_file = frontend_dist / "index.html"
+    if index_file.exists() and not request.url.path.startswith("/api"):
+        return FileResponse(index_file)
+    return Response(content="Not Found", status_code=404)
+

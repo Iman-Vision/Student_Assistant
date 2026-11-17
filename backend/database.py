@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import uuid
 from datetime import datetime
@@ -5,8 +6,8 @@ from typing import List, Optional
 
 
 class Database:
-    def __init__(self, db_path: str = "docsage.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None):
+        self.db_path = db_path or os.getenv("DB_PATH", "docsage.db")
         self.init_db()
 
     def get_connection(self):
