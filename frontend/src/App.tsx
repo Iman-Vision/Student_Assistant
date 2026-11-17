@@ -384,7 +384,7 @@ export default function App() {
 
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'magic'>('signin');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'magic' | 'reset'>('signin');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
@@ -417,6 +417,19 @@ export default function App() {
     if (error) setAuthError(error.message);
     else setAuthSuccess('Account created! Check your inbox to confirm your email.');
   }, [authEmail, authPassword, isSendingLink]);
+
+  const handleResetPassword = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail.trim() || isSendingLink) return;
+    setAuthError(''); setAuthSuccess('');
+    setIsSendingLink(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(authEmail.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setIsSendingLink(false);
+    if (error) setAuthError(error.message);
+    else setAuthSuccess('Password reset link sent! Check your inbox.');
+  }, [authEmail, isSendingLink]);
 
   const handleSendMagicLink = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -735,10 +748,45 @@ export default function App() {
                   >
                     {isSendingLink ? <><Loader2 size={16} className="animate-spin" /> Signing in…</> : 'Sign In'}
                   </button>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>No account?{' '}
+                      <button type="button" onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthSuccess(''); }} className="text-purple-400 hover:text-purple-300 underline">
+                        Create one
+                      </button>
+                    </span>
+                    <button type="button" onClick={() => { setAuthMode('reset'); setAuthError(''); setAuthSuccess(''); }} className="text-purple-400 hover:text-purple-300 underline">
+                      Forgot password?
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Reset Password */}
+              {authMode === 'reset' && (
+                <form onSubmit={handleResetPassword} className="space-y-3">
+                  <p className="text-xs text-gray-500 mb-3">Enter your email and we'll send you a password reset link.</p>
+                  <input
+                    type="email" required value={authEmail}
+                    onChange={e => setAuthEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    disabled={isSendingLink}
+                    className="w-full bg-[#1a1a1a] border border-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30 text-sm text-white disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSendingLink || !authEmail.trim()}
+                    className="w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {isSendingLink ? <><Loader2 size={16} className="animate-spin" /> Sending…</> : 'Send Reset Link'}
+                  </button>
+                  {authSuccess && (
+                    <div className="p-3 rounded-xl border border-green-500/30 bg-green-500/10">
+                      <p className="text-xs text-green-400">{authSuccess}</p>
+                    </div>
+                  )}
                   <p className="text-xs text-gray-500">
-                    No account?{' '}
-                    <button type="button" onClick={() => setAuthMode('signup')} className="text-purple-400 hover:text-purple-300 underline">
-                      Create one
+                    <button type="button" onClick={() => { setAuthMode('signin'); setAuthError(''); setAuthSuccess(''); }} className="text-purple-400 hover:text-purple-300 underline">
+                      ← Back to Sign In
                     </button>
                   </p>
                 </form>
