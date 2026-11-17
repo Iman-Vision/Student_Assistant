@@ -565,12 +565,12 @@ function SettingsView({
         </form>
       </div>
 
-      <div className="mt-8 pt-6 border-t border-gray-800/80 flex justify-end">
+      <div className="mt-8 pt-6 border-t border-gray-800/80 flex justify-center">
         <button
           onClick={onSignOut}
-          className="text-xs text-red-400 hover:text-red-300 px-4 py-2 rounded-xl border border-red-500/20 hover:bg-red-500/10 transition-colors flex items-center gap-2"
+          className="text-sm font-semibold text-red-400 hover:text-red-300 px-6 py-2.5 rounded-xl border-2 border-red-500 bg-red-500/10 hover:bg-red-500/20 transition-all flex items-center justify-center gap-2 shadow-sm"
         >
-          <LogOut size={14} />
+          <LogOut size={16} />
           Sign Out of Account
         </button>
       </div>
@@ -1253,10 +1253,6 @@ export default function App() {
               )}
             >
               <Settings size={16} />
-            </button>
-            <button onClick={handleSignOut} title="Sign out"
-              className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] shrink-0">
-              <LogOut size={16} />
             </button>
           </div>
           <button
